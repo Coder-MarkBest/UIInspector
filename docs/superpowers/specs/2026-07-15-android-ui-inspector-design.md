@@ -96,7 +96,7 @@ dependencies {
 }
 ```
 
-Gradle 插件第一版只支持 AGP 8.x。发现不兼容版本时构建失败并给出明确提示，不静默跳过插桩。
+Gradle 插件第一版支持 AGP 8.2.2–8.13.2。发现不兼容版本时构建失败并给出明确提示，不静默跳过插桩。
 
 ## 5. 当前进程 Window Root 发现
 
@@ -247,6 +247,8 @@ data class WindowRootSnapshot(
 7. 在候选 Root 中按逆绘制顺序遍历 View。
 8. 对所有包含坐标的候选节点评分。
 9. 默认选中最高分节点，并允许切换父节点、重叠节点和下层窗口。
+
+当前进程模式不申请系统悬浮窗权限。实现时针对每个可检查 Root，使用该 Root 的 Window token 和屏幕边界创建短生命周期的 `TYPE_APPLICATION_PANEL` 取点子窗口；任意一个子窗口收到第一次 `ACTION_UP` 后，立即统一移除所有取点子窗口。高亮子窗口同样绑定目标 Root token，但必须不可触摸、不可聚焦。这样才能同时覆盖 Activity、Dialog、PopupWindow 和直接通过 WindowManager 添加的独立 Root。
 
 候选评分考虑：
 

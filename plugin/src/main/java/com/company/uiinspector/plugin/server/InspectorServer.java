@@ -55,11 +55,11 @@ public final class InspectorServer implements AutoCloseable {
         try (exchange) {
             addSecurityHeaders(exchange);
             Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
-            if (!token.equals(query.get("token"))) {
+            String path = exchange.getRequestURI().getPath();
+            if (requiresToken(path) && !token.equals(query.get("token"))) {
                 send(exchange, 401, "text/plain; charset=utf-8", "Session token required.");
                 return;
             }
-            String path = exchange.getRequestURI().getPath();
             if (path.startsWith("/api/")) {
                 handleApi(exchange, path, query);
             } else {
@@ -71,6 +71,10 @@ public final class InspectorServer implements AutoCloseable {
                         "{\"error\":\"Internal inspector error\"}");
             }
         }
+    }
+
+    private static boolean requiresToken(String path) {
+        return "/".equals(path) || "/index.html".equals(path) || path.startsWith("/api/");
     }
 
     private void handleApi(HttpExchange exchange, String path, Map<String, String> query) throws IOException {

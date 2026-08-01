@@ -65,7 +65,16 @@ public final class InspectorApi implements InspectorServer.Api {
     @Override
     public String devices() {
         try {
-            return GSON.toJson(this.devices.list());
+            var response = this.devices.list().stream()
+                    .map(device -> new DeviceResponse(
+                            device.serial(),
+                            device.state(),
+                            device.model(),
+                            device.product(),
+                            device.device(),
+                            device.ready()))
+                    .toList();
+            return GSON.toJson(response);
         } catch (Exception error) {
             return error(error);
         }
@@ -164,4 +173,12 @@ public final class InspectorApi implements InspectorServer.Api {
         String processName;
         int pid;
     }
+
+    private record DeviceResponse(
+            String serial,
+            String state,
+            String model,
+            String product,
+            String device,
+            boolean ready) {}
 }

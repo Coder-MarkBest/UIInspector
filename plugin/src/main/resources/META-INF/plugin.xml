@@ -1,0 +1,25 @@
+<idea-plugin>
+    <id>com.company.uiinspector</id>
+    <name>Android UI Inspector</name>
+    <vendor>Company Android Tools</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+            id="UI Inspector"
+            anchor="right"
+            factoryClass="com.company.uiinspector.plugin.ui.InspectorToolWindowFactory" />
+        <projectService serviceImplementation="com.company.uiinspector.plugin.ui.InspectorProjectService" />
+    </extensions>
+
+    <actions>
+        <action
+            id="UIInspector.Open"
+            class="com.company.uiinspector.plugin.actions.OpenInspectorAction"
+            text="Open UI Inspector"
+            description="Open the Android UI Inspector browser">
+            <add-to-group group-id="ToolsMenu" anchor="last" />
+        </action>
+    </actions>
+</idea-plugin>

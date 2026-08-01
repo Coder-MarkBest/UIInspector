@@ -57,6 +57,11 @@ public final class AgentDeployer {
                     "code_cache/uiinspector/helper-" + captureId + ".apk"), COMMAND_TIMEOUT, "Copying View helper");
             command(serial, List.of("shell", "run-as", packageName, "cp", tempAgent,
                     "code_cache/uiinspector/libuiinspector_agent_" + captureId + ".so"), COMMAND_TIMEOUT, "Copying JVMTI agent");
+            command(serial, List.of(
+                            "shell", "run-as", packageName, "chmod", "0444",
+                            "code_cache/uiinspector/helper-" + captureId + ".apk",
+                            "code_cache/uiinspector/libuiinspector_agent_" + captureId + ".so"),
+                    COMMAND_TIMEOUT, "Protecting dynamic code payloads");
 
             command(serial, List.of(
                             "shell", "cmd", "activity", "attach-agent", process.processName(),

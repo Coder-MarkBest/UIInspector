@@ -1,0 +1,8 @@
+{
+  "name": "android-ui-inspector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:web": "node --test plugin/src/test/js/*.test.mjs"
+  }
+}

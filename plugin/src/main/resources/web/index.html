@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Android UI Inspector</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="product-mark">
+      <span class="mark-glyph" aria-hidden="true">UI</span>
+      <div>
+        <h1>Android UI Inspector</h1>
+        <p id="connection-status"><span class="status-dot"></span>等待设备</p>
+      </div>
+    </div>
+    <label class="field compact">
+      <span>设备</span>
+      <select id="device-select" aria-label="Android 设备"><option value="">选择设备</option></select>
+    </label>
+    <label class="field compact">
+      <span>范围</span>
+      <select id="scope-select" aria-label="采集范围">
+        <option value="target">目标进程</option>
+        <option value="global">全局 Window</option>
+      </select>
+    </label>
+    <label class="field process-field">
+      <span>进程</span>
+      <select id="process-select" aria-label="目标进程"><option value="">选择进程</option></select>
+    </label>
+    <button id="capture-button" class="primary-button">采集</button>
+  </header>
+
+  <main class="workspace">
+    <aside class="tree-panel panel">
+      <div class="panel-heading">
+        <div><span class="kicker">STRUCTURE</span><h2>Window / View 树</h2></div>
+        <span id="tree-count" class="count-chip">0</span>
+      </div>
+      <label class="search-field">
+        <span class="sr-only">搜索 View</span>
+        <input id="tree-search" type="search" placeholder="搜索 class、id、text">
+      </label>
+      <div id="tree" class="tree" role="tree" aria-label="Window 和 View 层级"></div>
+    </aside>
+
+    <section class="stage-panel">
+      <div class="stage-toolbar">
+        <div class="segmented" aria-label="视图形式">
+          <button data-stage="2d" aria-pressed="true">2D</button>
+          <button data-stage="3d" aria-pressed="false">3D</button>
+        </div>
+        <div id="three-mode" class="segmented" aria-label="3D 层级含义">
+          <button data-three-mode="windows" aria-pressed="true">Window layers</button>
+          <button data-three-mode="views" aria-pressed="false">View depth</button>
+        </div>
+        <label class="inline-field">
+          <span>Display</span>
+          <select id="display-select"><option value="0">0</option></select>
+        </label>
+        <label class="depth-control">
+          <span id="depth-label">全部层</span>
+          <input id="depth-slider" type="range" min="0" max="0" value="0">
+        </label>
+        <label class="rule-toggle">
+          <input id="rules-toggle" type="checkbox">
+          <span>异常检查</span>
+        </label>
+      </div>
+
+      <div id="stage" class="stage" tabindex="0" aria-label="UI 层级画布">
+        <div id="empty-state" class="empty-state">
+          <span class="empty-glyph">⌁</span>
+          <h2>选择设备并采集</h2>
+          <p>目标进程优先读取真实 View；无法增强时自动显示公开语义节点。</p>
+        </div>
+        <div id="two-d-stage" class="two-d-stage" hidden>
+          <div id="screen-frame" class="screen-frame">
+            <img id="screenshot" alt="设备截图">
+            <div id="overlay-layer" class="overlay-layer"></div>
+            <div id="secure-screenshot" class="secure-screenshot" hidden></div>
+          </div>
+        </div>
+        <div id="three-d-stage" class="three-d-stage" hidden>
+          <div id="scene" class="scene"></div>
+        </div>
+      </div>
+      <footer class="stage-footer">
+        <span id="stage-caption">尚未采集</span>
+        <span id="fidelity-badge" class="source-chip">—</span>
+      </footer>
+    </section>
+
+    <aside class="property-panel panel">
+      <div class="panel-heading">
+        <div><span class="kicker">DETAIL</span><h2 id="selected-title">属性</h2></div>
+        <span id="selected-source" class="source-chip">未选择</span>
+      </div>
+      <section id="findings" class="findings" hidden>
+        <div class="subheading"><h3>异常候选</h3><span id="finding-count" class="warning-chip">0</span></div>
+        <div id="finding-list"></div>
+      </section>
+      <div id="properties" class="properties">
+        <div class="property-empty">从左侧树、2D 框或 3D 平面选择一个节点。</div>
+      </div>
+      <section class="diagnostics">
+        <div class="subheading"><h3>采集诊断</h3></div>
+        <div id="diagnostic-list" class="diagnostic-list"><p>暂无数据</p></div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

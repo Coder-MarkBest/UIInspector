@@ -24,6 +24,10 @@ final class WebAssetContractTest {
         assertTrue(css.contains("grid-template-columns: 274px minmax(420px, 1fr) 330px"));
         assertTrue(css.contains("prefers-reduced-motion"));
         assertTrue(app.contains("api('api/capture'"));
+        assertTrue(app.contains("api('api/mutate'"));
+        assertTrue(css.contains(".property-editor"));
+        assertFalse(html.contains("<script>"));
+        assertFalse(app.contains("eval("));
         assertFalse(app.toLowerCase().contains("mock"));
     }
 

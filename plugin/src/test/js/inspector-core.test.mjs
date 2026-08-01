@@ -7,6 +7,9 @@ import {
   evaluateRules,
   filterDepth,
   groupProperties,
+  mutationKey,
+  propertyEditorModel,
+  rememberOriginalValue,
   selectNode
 } from '../../main/resources/web/inspector-core.js';
 
@@ -77,6 +80,27 @@ test('anomaly checks are off by default and report layout or image evidence when
   assert.deepEqual(findings.map(value => value.ruleId), ['layout.outsideWindow', 'image.oversized']);
   assert.equal(findings[1].nodeId, 'child');
   assert.equal(findings[1].evidence.bitmapByteCount, 67108864);
+});
+
+test('editor model maps protocol types to safe controls', () => {
+  assert.deepEqual(propertyEditorModel({
+    value: 'true', editor: { valueType: 'BOOLEAN', choices: [] }
+  }), { control: 'checkbox', value: true, choices: [] });
+  assert.deepEqual(propertyEditorModel({
+    value: 'CENTER_CROP', editor: { valueType: 'ENUM', choices: ['CENTER', 'CENTER_CROP'] }
+  }), { control: 'select', value: 'CENTER_CROP', choices: ['CENTER', 'CENTER_CROP'] });
+  assert.deepEqual(propertyEditorModel({
+    value: '-1', editor: { valueType: 'INTEGER', choices: ['MATCH_PARENT', 'WRAP_CONTENT'] }
+  }), { control: 'select', value: '-1', choices: ['MATCH_PARENT', 'WRAP_CONTENT'] });
+  assert.equal(propertyEditorModel({ value: 'Drawable', editor: null }), null);
+});
+
+test('restore history keeps the first value per process node and property', () => {
+  const history = new Map();
+  const key = mutationKey('123', 'v:n:0:0', 'alpha');
+  rememberOriginalValue(history, key, '1.0');
+  rememberOriginalValue(history, key, '0.5');
+  assert.equal(history.get(key), '1.0');
 });
 
 function rect(left, top, right, bottom) { return { left, top, right, bottom }; }

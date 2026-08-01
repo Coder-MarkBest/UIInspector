@@ -1,4 +1,6 @@
-# Android UI Inspector 设备端设计
+# Android UI Inspector 设备端设计（历史方案）
+
+> 本文描述早期 SDK 集成方案，已被 `2026-08-01-android-studio-ui-inspector-plugin-design.md` 取代，不再作为当前实现依据。
 
 ## 1. 背景
 

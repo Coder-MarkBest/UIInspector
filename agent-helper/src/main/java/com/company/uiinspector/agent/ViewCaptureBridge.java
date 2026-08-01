@@ -334,7 +334,7 @@ public final class ViewCaptureBridge {
         return new com.company.uiinspector.protocol.Rect(visible.left, visible.top, visible.right, visible.bottom);
     }
 
-    private static String resourceId(View view) {
+    static String resourceId(View view) {
         if (view.getId() == View.NO_ID) return null;
         try {
             return view.getResources().getResourceName(view.getId());
@@ -356,11 +356,15 @@ public final class ViewCaptureBridge {
     private static void put(Map<String, String> values, String key, String value) { if (value != null) values.put(key, value); }
 
     private static void write(InspectionSnapshot snapshot, String outputPath) {
+        writeJson(SnapshotJson.encode(snapshot), outputPath);
+    }
+
+    static void writeJson(String json, String outputPath) {
         File target = new File(outputPath);
         File parent = target.getParentFile();
         if (parent != null) parent.mkdirs();
         try (FileOutputStream stream = new FileOutputStream(target)) {
-            stream.write(SnapshotJson.encode(snapshot).getBytes(StandardCharsets.UTF_8));
+            stream.write(json.getBytes(StandardCharsets.UTF_8));
         } catch (IOException ignored) {
             // The desktop side times out and reports enhanced-capture unavailability.
         }

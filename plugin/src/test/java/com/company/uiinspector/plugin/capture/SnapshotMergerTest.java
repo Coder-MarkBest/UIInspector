@@ -17,7 +17,11 @@ import org.junit.jupiter.api.Test;
 class SnapshotMergerTest {
     @Test
     void targetScopeUsesRealViewsAndCarriesDesktopMetadata() {
-        var semantic = snapshot(CaptureSource.SEMANTIC, "semantic", List.of(new Diagnostic("INFO", "semantic", "ok")));
+        var semanticBase = snapshot(CaptureSource.SEMANTIC, "semantic", List.of(new Diagnostic("INFO", "semantic", "ok")));
+        var semantic = new InspectionSnapshot(
+                semanticBase.schemaVersion(), semanticBase.capturedAtEpochMs(), semanticBase.deviceSerial(),
+                semanticBase.scope(), semanticBase.targetPackage(), null, semanticBase.processes(),
+                semanticBase.windows(), semanticBase.nodes(), semanticBase.diagnostics(), semanticBase.screenshot());
         var enhanced = snapshot(CaptureSource.JVMTI, "real", List.of());
         var process = new ProcessInfo(42, "u0_a1", "com.example", "com.example", true);
         var screenshot = new Screenshot("image/png", "data:image/png;base64,AA==", null);
@@ -27,6 +31,7 @@ class SnapshotMergerTest {
         assertEquals(CaptureSource.JVMTI, merged.windows().get(0).source());
         assertEquals("real", merged.windows().get(0).title());
         assertEquals(42, merged.processes().get(0).pid());
+        assertEquals("com.example", merged.targetProcess());
         assertEquals(screenshot, merged.screenshot());
         assertEquals("semantic", merged.diagnostics().get(0).code());
     }

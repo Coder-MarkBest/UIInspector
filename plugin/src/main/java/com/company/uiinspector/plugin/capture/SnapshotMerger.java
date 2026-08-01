@@ -25,12 +25,16 @@ public final class SnapshotMerger {
                 Math.max(semantic.capturedAtEpochMs(), tree.capturedAtEpochMs()),
                 semantic.deviceSerial(),
                 semantic.scope(),
-                semantic.targetPackage(),
-                semantic.targetProcess(),
+                firstPresent(tree.targetPackage(), semantic.targetPackage()),
+                firstPresent(tree.targetProcess(), semantic.targetProcess()),
                 List.copyOf(processes),
                 tree.windows(),
                 tree.nodes(),
                 List.copyOf(diagnostics),
                 screenshot);
+    }
+
+    private static String firstPresent(String preferred, String fallback) {
+        return preferred == null || preferred.isBlank() ? fallback : preferred;
     }
 }

@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "UIInspector"
 include(":protocol")
 include(":collector")
+include(":plugin")

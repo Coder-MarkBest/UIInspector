@@ -6,6 +6,9 @@ import {
   filterDepth,
   flattenProperties,
   groupProperties,
+  mutationKey,
+  propertyEditorModel,
+  rememberOriginalValue,
   selectNode
 } from './inspector-core.js';
 
@@ -31,6 +34,9 @@ let state = {
   selectedNodeId: null,
   expanded: new Set(),
   findings: [],
+  editingProperty: null,
+  mutationBusy: false,
+  originalValues: new Map(),
   rotationX: 58,
   rotationZ: -27,
   scale: .9
@@ -40,11 +46,16 @@ bind();
 initialize();
 
 function bind() {
-  elements['device-select'].addEventListener('change', loadProcesses);
+  elements['device-select'].addEventListener('change', () => {
+    clearMutationState();
+    loadProcesses();
+  });
   elements['scope-select'].addEventListener('change', () => {
+    clearMutationState();
     elements['process-select'].disabled = elements['scope-select'].value === 'global';
     renderToolbar();
   });
+  elements['process-select'].addEventListener('change', clearMutationState);
   elements['capture-button'].addEventListener('click', capture);
   elements['tree-search'].addEventListener('input', renderTree);
   elements['display-select'].addEventListener('change', event => {
@@ -112,6 +123,7 @@ async function capture() {
   const processOption = elements['process-select'].selectedOptions[0];
   if (!serial) return fail(new Error('请先选择已授权的 Android 设备。'));
   if (scope === 'target' && !processOption?.value) return fail(new Error('请选择目标进程。'));
+  clearMutationState();
   setCapturing(true);
   try {
     const snapshot = await api('api/capture', {
@@ -332,13 +344,202 @@ function renderProperties() {
       table.append(el('div', 'property-name', '—'), el('div', 'property-value', '当前后端未提供'));
     } else for (const [name, property] of entries) {
       const key = el('div', 'property-name', name);
-      const value = el('div', 'property-value', String(property?.value ?? ''));
-      value.append(el('span', 'property-source', property?.source ?? target.source ?? ''));
+      const value = propertyValue(target, name, property);
       table.append(key, value);
     }
     details.append(table);
     elements.properties.append(details);
   }
+}
+
+function propertyValue(target, name, property) {
+  const container = el('div', 'property-value');
+  const targetId = target.id;
+  const editId = `${targetId}\u0000${name}`;
+  const editing = state.editingProperty?.id === editId;
+  const model = propertyEditorModel(property);
+  if (editing && model) {
+    const editor = el('div', `property-editor${state.mutationBusy ? ' busy' : ''}`);
+    const control = editorControl(property, model, state.editingProperty.inputValue);
+    control.disabled = state.mutationBusy;
+    control.addEventListener(control.type === 'checkbox' ? 'change' : 'input', () => {
+      state.editingProperty.inputValue = control.type === 'checkbox'
+        ? String(control.checked) : control.value;
+    });
+    const actions = el('div', 'property-actions');
+    const apply = actionButton('应用', 'apply');
+    const cancel = actionButton('取消', 'cancel');
+    apply.disabled = state.mutationBusy;
+    cancel.disabled = state.mutationBusy;
+    apply.addEventListener('click', () => mutateProperty(
+      target, name, property, state.editingProperty.inputValue));
+    cancel.addEventListener('click', () => {
+      state.editingProperty = null;
+      renderProperties();
+    });
+    actions.append(apply, cancel);
+    editor.append(control);
+    if (property.editor.valueType === 'COLOR') editor.append(colorSwatch(state.editingProperty.inputValue));
+    editor.append(actions);
+    if (state.editingProperty.error) {
+      editor.append(el('div', 'property-editor-error', state.editingProperty.error));
+    }
+    container.append(editor);
+  } else {
+    container.append(el('span', 'property-value-main', String(property?.value ?? '')));
+    if (model && target.source === 'JVMTI') {
+      const actions = el('div', 'property-actions');
+      const edit = actionButton('编辑', 'edit');
+      edit.addEventListener('click', () => {
+        state.editingProperty = {
+          id: editId,
+          targetId,
+          name,
+          inputValue: String(property?.value ?? ''),
+          error: null
+        };
+        renderProperties();
+      });
+      actions.append(edit);
+      const originalKey = mutationKey(elements['process-select'].value, targetId, name);
+      const original = state.originalValues.get(originalKey);
+      if (original !== undefined && original !== String(property?.value ?? '')) {
+        const restore = actionButton('恢复', 'restore');
+        restore.disabled = state.mutationBusy;
+        restore.addEventListener('click', () => mutateProperty(target, name, property, original));
+        actions.append(restore);
+      }
+      container.append(actions);
+    } else if (property?.readOnlyReason) {
+      const reason = el('span', 'property-readonly', property.readOnlyReason);
+      reason.title = property.readOnlyReason;
+      container.append(reason);
+    }
+  }
+  container.append(el('span', 'property-source', property?.source ?? target.source ?? ''));
+  return container;
+}
+
+function editorControl(property, model, inputValue) {
+  if (model.control === 'checkbox') {
+    const input = el('input', 'property-editor-control');
+    input.type = 'checkbox';
+    input.checked = String(inputValue).toLowerCase() === 'true';
+    input.setAttribute('aria-label', '布尔值');
+    return input;
+  }
+  if (model.control === 'select') {
+    const select = el('select', 'property-editor-control');
+    const values = model.choices.includes(String(inputValue))
+      ? model.choices : [String(inputValue), ...model.choices];
+    select.replaceChildren(...values.map(value => option(value, value)));
+    select.value = String(inputValue);
+    return select;
+  }
+  const input = el('input', 'property-editor-control');
+  input.type = 'text';
+  input.value = String(inputValue);
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  if (property.editor.valueType === 'CHARACTER') input.maxLength = 1;
+  return input;
+}
+
+function colorSwatch(value) {
+  const swatch = el('span', 'property-color-swatch');
+  if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(value)) swatch.style.background = value;
+  swatch.title = value;
+  return swatch;
+}
+
+function actionButton(label, action) {
+  const button = el('button', `property-action ${action}`, label);
+  button.type = 'button';
+  return button;
+}
+
+async function mutateProperty(target, name, property, value) {
+  if (state.mutationBusy) return;
+  const serial = elements['device-select'].value;
+  const processOption = elements['process-select'].selectedOptions[0];
+  const identity = targetIdentity(target);
+  if (!serial || !processOption?.value || !identity) {
+    if (state.editingProperty) state.editingProperty.error = '当前目标已变化，请重新采集。';
+    renderProperties();
+    return;
+  }
+  state.mutationBusy = true;
+  if (state.editingProperty) state.editingProperty.error = null;
+  renderProperties();
+  try {
+    const result = await api('api/mutate', {
+      method: 'POST',
+      body: JSON.stringify({
+        serial,
+        pid: Number(processOption.value),
+        packageName: processOption.dataset.package,
+        processName: processOption.dataset.process,
+        targetId: target.id,
+        expectedClassName: identity.className ?? null,
+        expectedResourceId: identity.resourceId ?? null,
+        propertyName: name,
+        value: String(value)
+      })
+    });
+    if (!result.success || !result.snapshot) throw new Error(result.message ?? result.error ?? '属性修改失败。');
+    const originalKey = mutationKey(processOption.value, target.id, name);
+    rememberOriginalValue(state.originalValues, originalKey, String(property?.value ?? ''));
+    state.editingProperty = null;
+    applyMutationSnapshot(result.snapshot, target);
+    toast(`已应用 ${name}`);
+  } catch (error) {
+    if (state.editingProperty) state.editingProperty.error = error.message ?? String(error);
+    toast(error.message ?? String(error), true);
+  } finally {
+    state.mutationBusy = false;
+    renderProperties();
+  }
+}
+
+function targetIdentity(target) {
+  if (target.className) return { className: target.className, resourceId: target.resourceId ?? null };
+  const root = target.rootNodeId ? state.snapshot?.nodes?.[target.rootNodeId] : null;
+  return root ? { className: root.className, resourceId: root.resourceId ?? null } : null;
+}
+
+function applyMutationSnapshot(snapshot, previousTarget) {
+  const displayId = state.displayId;
+  const selectedWindowId = state.selectedWindowId;
+  const selectedNodeId = state.selectedNodeId;
+  const identity = targetIdentity(previousTarget);
+  state.snapshot = snapshot;
+  state.findings = evaluateRules(snapshot, elements['rules-toggle'].checked);
+  const displays = [...new Set((snapshot.windows ?? []).map(window => window.displayId))].sort((a, b) => a - b);
+  elements['display-select'].replaceChildren(...(displays.length ? displays : [0]).map(value => option(String(value), String(value))));
+  state.displayId = displays.includes(displayId) ? displayId : displays[0] ?? 0;
+  elements['display-select'].value = String(state.displayId);
+  state.expanded = new Set([...state.expanded].filter(id => snapshot.windows.some(window => window.id === id)));
+  const selectedWindow = snapshot.windows.find(window => window.id === selectedWindowId);
+  const selectedNode = selectedNodeId ? snapshot.nodes[selectedNodeId] : null;
+  state.selectedWindowId = selectedWindow?.id ?? null;
+  state.selectedNodeId = selectedNode?.id ?? null;
+  const refreshedTarget = state.selectedNodeId
+    ? selectedNode
+    : snapshot.windows.find(window => window.id === state.selectedWindowId);
+  const refreshedIdentity = refreshedTarget ? targetIdentity(refreshedTarget) : null;
+  if (!refreshedTarget || !identity || !refreshedIdentity
+      || identity.className !== refreshedIdentity.className
+      || identity.resourceId !== refreshedIdentity.resourceId) {
+    state.originalValues.clear();
+    chooseDefaultSelection();
+  }
+  render();
+}
+
+function clearMutationState() {
+  state.editingProperty = null;
+  state.mutationBusy = false;
+  state.originalValues.clear();
 }
 
 function renderFindings() {

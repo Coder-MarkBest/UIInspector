@@ -160,6 +160,21 @@ select, input[type="search"] { height: 30px; padding: 0 9px; min-width: 0; }
 .property-name { color: var(--muted); overflow-wrap: anywhere; }
 .property-value { color: var(--ink); overflow-wrap: anywhere; }
 .property-source { display: block; color: #78909e; font-size: 8px; }
+.property-value-main { display: block; min-width: 0; overflow-wrap: anywhere; }
+.property-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: center; }
+.property-editor.busy { opacity: .68; }
+.property-editor-control { min-width: 0; width: 100%; height: 26px; padding: 2px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--panel); color: var(--ink); font: 10px var(--mono); }
+.property-editor-control[type="checkbox"] { justify-self: start; width: 16px; height: 16px; padding: 0; accent-color: var(--blue); }
+.property-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.property-editor .property-actions { grid-column: 1 / -1; margin-top: 0; }
+.property-action { min-height: 22px; padding: 2px 7px; border-color: var(--line-strong); color: var(--blue); cursor: pointer; font: 9px var(--mono); }
+.property-action:hover { background: var(--blue-soft); }
+.property-action.apply { border-color: var(--blue); background: var(--blue); color: white; }
+.property-action.restore { color: var(--teal); }
+.property-action:disabled { opacity: .55; cursor: wait; }
+.property-editor-error { grid-column: 1 / -1; color: var(--danger); font: 9px/1.4 var(--mono); overflow-wrap: anywhere; }
+.property-readonly { display: block; margin-top: 2px; color: var(--muted); font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.property-color-swatch { width: 20px; height: 20px; border: 1px solid var(--line-strong); border-radius: 3px; background-image: linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%); background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0; }
 .findings { margin-bottom: 13px; padding: 10px; border: 1px solid #ecc9ad; background: #fff9f4; }
 .subheading h3 { margin: 0; font-size: 11px; }
 .finding-button { width: 100%; margin-top: 7px; padding: 7px; border-color: #ecc9ad; text-align: left; color: var(--orange); cursor: pointer; font-size: 10px; }

@@ -60,6 +60,27 @@ export function selectNode(state, nodeId) {
   return { ...state, selectedNodeId: nodeId };
 }
 
+export function propertyEditorModel(property) {
+  if (!property?.editor) return null;
+  const choices = Array.isArray(property.editor.choices) ? property.editor.choices.slice() : [];
+  if (property.editor.valueType === 'BOOLEAN') {
+    return { control: 'checkbox', value: String(property.value).toLowerCase() === 'true', choices };
+  }
+  if (property.editor.valueType === 'ENUM' || choices.length) {
+    return { control: 'select', value: String(property.value ?? ''), choices };
+  }
+  return { control: 'text', value: String(property.value ?? ''), choices };
+}
+
+export function mutationKey(pid, targetId, propertyName) {
+  return `${String(pid)}\u0000${String(targetId)}\u0000${String(propertyName)}`;
+}
+
+export function rememberOriginalValue(history, key, value) {
+  if (!history.has(key)) history.set(key, value);
+  return history;
+}
+
 export function evaluateRules(snapshot, enabled) {
   if (!enabled) return [];
   const windows = new Map((snapshot?.windows ?? []).map(window => [window.id, window]));

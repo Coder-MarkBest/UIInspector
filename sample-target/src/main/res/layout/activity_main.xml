@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="UI Inspector window fixtures"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/nested_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/nested_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="Nested View fixture"
+                android:text="Activity → container → nested label" />
+
+            <ImageView
+                android:id="@+id/large_image"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:layout_marginTop="12dp"
+                android:contentDescription="Oversized bitmap fixture"
+                android:scaleType="centerCrop" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:layout_marginTop="16dp">
+
+            <TextView
+                android:id="@+id/outside_layout"
+                android:layout_width="1400dp"
+                android:layout_height="48dp"
+                android:background="#1AEB5757"
+                android:gravity="center_vertical"
+                android:text="Deliberately oversized layout fixture" />
+        </HorizontalScrollView>
+
+        <Button
+            android:id="@+id/show_dialog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Show dialog" />
+
+        <Button
+            android:id="@+id/show_popup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show PopupWindow" />
+
+        <Button
+            android:id="@+id/add_direct_window"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add direct WindowManager View" />
+
+        <Button
+            android:id="@+id/show_secure_window"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show secure Window fixture" />
+    </LinearLayout>
+</ScrollView>

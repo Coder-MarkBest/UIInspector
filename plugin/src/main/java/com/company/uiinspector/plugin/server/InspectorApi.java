@@ -11,10 +11,18 @@ import com.company.uiinspector.plugin.capture.ScreenshotCapture;
 import com.company.uiinspector.plugin.capture.SemanticCapture;
 import com.company.uiinspector.plugin.capture.SnapshotMerger;
 import com.company.uiinspector.protocol.CaptureScope;
+import com.company.uiinspector.protocol.CaptureSource;
 import com.company.uiinspector.protocol.Diagnostic;
 import com.company.uiinspector.protocol.InspectionSnapshot;
+import com.company.uiinspector.protocol.MutationCommand;
+import com.company.uiinspector.protocol.MutationJson;
+import com.company.uiinspector.protocol.MutationResult;
 import com.company.uiinspector.protocol.ProcessInfo;
+import com.company.uiinspector.protocol.PropertyGroup;
+import com.company.uiinspector.protocol.PropertyValue;
 import com.company.uiinspector.protocol.SnapshotJson;
+import com.company.uiinspector.protocol.UiNode;
+import com.company.uiinspector.protocol.WindowSnapshot;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import java.time.Duration;
@@ -22,6 +30,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class InspectorApi implements InspectorServer.Api {
@@ -51,6 +60,17 @@ public final class InspectorApi implements InspectorServer.Api {
         this.screenshots = new ScreenshotCapture(adb);
         this.agents = agents;
         this.defaultPackage = defaultPackage;
+    }
+
+    InspectorApi(
+            AdbClient adb,
+            CollectorManager collector,
+            AgentDeployer agents,
+            String defaultPackage,
+            InspectionSnapshot initialSnapshot) {
+        this(adb, collector, agents, defaultPackage);
+        this.current.set(initialSnapshot);
+        this.status.set(initialSnapshot == null ? "idle" : "ready");
     }
 
     @Override
@@ -141,6 +161,166 @@ public final class InspectorApi implements InspectorServer.Api {
         }
     }
 
+    @Override
+    public synchronized String mutate(String body, Map<String, String> query) {
+        status.set("mutating");
+        try {
+            MutationRequest request = GSON.fromJson(body, MutationRequest.class);
+            validateRequest(request);
+            InspectionSnapshot snapshot = current.get();
+            if (snapshot == null) throw apiFailure("stale_target", "Capture the target before editing.");
+            if (snapshot.scope() != CaptureScope.TARGET_PROCESS) {
+                throw apiFailure("target_read_only", "Global capture is read-only.");
+            }
+            if (!request.serial.equals(snapshot.deviceSerial())
+                    || !request.packageName.equals(snapshot.targetPackage())
+                    || !request.processName.equals(snapshot.targetProcess())) {
+                throw apiFailure("stale_target", "The current capture belongs to a different target.");
+            }
+
+            MutationTarget target = resolveMutationTarget(snapshot, request.targetId);
+            if (target.source() != CaptureSource.JVMTI) {
+                throw apiFailure("target_read_only", "Only Real View properties can be edited.");
+            }
+            if (!Objects.equals(request.expectedClassName, target.className())
+                    || !Objects.equals(request.expectedResourceId, target.resourceId())) {
+                throw apiFailure("stale_target", "The selected View identity has changed.");
+            }
+            PropertyValue property = findProperty(target.groups(), request.propertyName);
+            if (property == null || property.editor() == null) {
+                throw apiFailure("property_read_only", property != null && property.readOnlyReason() != null
+                        ? property.readOnlyReason() : "This property is read-only.");
+            }
+
+            List<RunningProcess> running = processes.list(request.serial);
+            RunningProcess process = running.stream()
+                    .filter(value -> value.pid() == request.pid)
+                    .filter(value -> request.packageName.equals(value.packageName()))
+                    .filter(value -> request.processName.equals(value.processName()))
+                    .findFirst()
+                    .orElseThrow(() -> apiFailure("stale_target", "The selected process is no longer running."));
+            if (!processes.isDebuggable(request.serial, process.packageName())) {
+                throw apiFailure("target_not_debuggable", "The selected process is not debuggable.");
+            }
+
+            var editor = property.editor();
+            MutationCommand command = new MutationCommand(
+                    MutationCommand.CURRENT_SCHEMA_VERSION,
+                    request.targetId,
+                    target.className(),
+                    target.resourceId(),
+                    request.propertyName,
+                    editor.adapter(),
+                    editor.target(),
+                    editor.valueType(),
+                    request.value);
+            MutationResult result = agents.mutate(
+                    request.serial, process, deviceAbi(request.serial), command);
+            if (!result.success()) {
+                status.set("ready");
+                return MutationJson.encodeResult(result);
+            }
+            if (result.snapshot() == null) {
+                throw apiFailure("mutation_failed", "The target did not return a refreshed snapshot.");
+            }
+
+            var screenshot = screenshots.capture(request.serial);
+            List<ProcessInfo> processInfo = running.stream()
+                    .map(value -> new ProcessInfo(
+                            value.pid(), value.user(), value.packageName(), value.processName(),
+                            value.pid() == process.pid()))
+                    .toList();
+            InspectionSnapshot fresh = result.snapshot();
+            InspectionSnapshot merged = new InspectionSnapshot(
+                    InspectionSnapshot.CURRENT_SCHEMA_VERSION,
+                    fresh.capturedAtEpochMs(),
+                    request.serial,
+                    CaptureScope.TARGET_PROCESS,
+                    request.packageName,
+                    request.processName,
+                    processInfo,
+                    fresh.windows(),
+                    fresh.nodes(),
+                    fresh.diagnostics(),
+                    screenshot);
+            current.set(merged);
+            status.set("ready");
+            return MutationJson.encodeResult(new MutationResult(
+                    MutationResult.CURRENT_SCHEMA_VERSION,
+                    true,
+                    result.code(),
+                    result.message(),
+                    result.previousValue(),
+                    result.appliedValue(),
+                    merged));
+        } catch (ApiFailure error) {
+            status.set("ready");
+            return mutationError(error.code, error.getMessage());
+        } catch (Exception error) {
+            status.set("error");
+            return mutationError("mutation_failed", safeMessage(error));
+        }
+    }
+
+    private static void validateRequest(MutationRequest request) {
+        if (request == null) throw apiFailure("invalid_request", "Mutation request is missing.");
+        require(request.serial, "Select an Android device before editing.");
+        if (request.pid <= 0) throw apiFailure("invalid_request", "Select a running process before editing.");
+        require(request.packageName, "Target package is missing.");
+        require(request.processName, "Target process is missing.");
+        require(request.targetId, "Selected View is missing.");
+        require(request.expectedClassName, "Selected View class is missing.");
+        require(request.propertyName, "Property name is missing.");
+        if (request.value == null) throw apiFailure("invalid_request", "Property value is missing.");
+    }
+
+    private static MutationTarget resolveMutationTarget(InspectionSnapshot snapshot, String targetId) {
+        UiNode node = snapshot.nodes().get(targetId);
+        if (node != null) {
+            return new MutationTarget(
+                    node.source(), node.className(), node.resourceId(), node.propertyGroups());
+        }
+        WindowSnapshot window = snapshot.windows().stream()
+                .filter(value -> value.id().equals(targetId))
+                .findFirst()
+                .orElseThrow(() -> apiFailure("stale_target", "The selected target is no longer present."));
+        UiNode root = window.rootNodeId() == null ? null : snapshot.nodes().get(window.rootNodeId());
+        if (root == null) throw apiFailure("stale_target", "The selected Window root is no longer present.");
+        return new MutationTarget(
+                window.source(), root.className(), root.resourceId(), window.propertyGroups());
+    }
+
+    private static PropertyValue findProperty(List<PropertyGroup> groups, String propertyName) {
+        for (PropertyGroup group : groups) {
+            PropertyValue value = group.properties().get(propertyName);
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    private static void require(String value, String message) {
+        if (value == null || value.isBlank()) throw apiFailure("invalid_request", message);
+    }
+
+    private static String mutationError(String code, String message) {
+        return MutationJson.encodeResult(new MutationResult(
+                MutationResult.CURRENT_SCHEMA_VERSION,
+                false,
+                code,
+                message,
+                null,
+                null,
+                null));
+    }
+
+    private static String safeMessage(Exception error) {
+        return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+    }
+
+    private static ApiFailure apiFailure(String code, String message) {
+        return new ApiFailure(code, message);
+    }
+
     private RunningProcess findTarget(List<RunningProcess> running, CaptureRequest request) {
         if (request.pid > 0) {
             return running.stream().filter(value -> value.pid() == request.pid).findFirst()
@@ -172,6 +352,33 @@ public final class InspectorApi implements InspectorServer.Api {
         String packageName;
         String processName;
         int pid;
+    }
+
+    private static final class MutationRequest {
+        String serial;
+        int pid;
+        String packageName;
+        String processName;
+        String targetId;
+        String expectedClassName;
+        String expectedResourceId;
+        String propertyName;
+        String value;
+    }
+
+    private record MutationTarget(
+            CaptureSource source,
+            String className,
+            String resourceId,
+            List<PropertyGroup> groups) {}
+
+    private static final class ApiFailure extends RuntimeException {
+        private final String code;
+
+        private ApiFailure(String code, String message) {
+            super(message);
+            this.code = code;
+        }
     }
 
     private record DeviceResponse(

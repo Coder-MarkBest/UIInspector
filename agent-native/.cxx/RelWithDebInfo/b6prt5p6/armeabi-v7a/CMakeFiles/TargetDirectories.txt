@@ -1,0 +1,3 @@
+/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/.cxx/RelWithDebInfo/b6prt5p6/armeabi-v7a/CMakeFiles/uiinspector_agent.dir
+/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/.cxx/RelWithDebInfo/b6prt5p6/armeabi-v7a/CMakeFiles/edit_cache.dir
+/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/.cxx/RelWithDebInfo/b6prt5p6/armeabi-v7a/CMakeFiles/rebuild_cache.dir

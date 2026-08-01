@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/src/main/cpp/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/xianxiaoli/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/.cxx/RelWithDebInfo/b6prt5p6/armeabi-v7a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/xianxiaoli/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/.cxx/RelWithDebInfo/b6prt5p6/armeabi-v7a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "uiinspector_agent::@6890427a1f51a3e7e1df": {
+      "artifactName": "uiinspector_agent",
+      "abi": "armeabi-v7a",
+      "output": "/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/build/intermediates/cxx/RelWithDebInfo/b6prt5p6/obj/armeabi-v7a/libuiinspector_agent.so",
+      "runtimeFiles": []
+    }
+  }
+}

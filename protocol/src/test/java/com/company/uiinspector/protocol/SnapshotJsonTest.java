@@ -13,6 +13,9 @@ class SnapshotJsonTest {
     @Test
     void roundTripsWindowHierarchyViewHierarchyAndGroupedProperties() {
         var identity = new LinkedHashMap<String, PropertyValue>();
+        var editor = new PropertyEditor(
+                EditorTarget.VIEW, EditorValueType.BOOLEAN, "setter:setEnabled", List.of());
+        identity.put("enabled", new PropertyValue("true", "JVMTI", editor, null));
         identity.put("class", new PropertyValue("android.widget.TextView", "JVMTI"));
         var node = new UiNode(
                 "v:1", CaptureSource.JVMTI, "w:child", null, List.of(), 0,
@@ -39,6 +42,10 @@ class SnapshotJsonTest {
         assertEquals(List.of("w:child"), decoded.windows().get(0).childWindowIds());
         assertEquals("JVMTI", decoded.nodes().get("v:1").propertyGroups().get(0)
                 .properties().get("class").source());
+        assertEquals(EditorValueType.BOOLEAN, decoded.nodes().get("v:1").propertyGroups().get(0)
+                .properties().get("enabled").editor().valueType());
+        assertNull(decoded.nodes().get("v:1").propertyGroups().get(0)
+                .properties().get("class").editor());
         assertNull(decoded.screenshot());
     }
 

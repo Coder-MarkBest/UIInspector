@@ -18,3 +18,5 @@ rootProject.name = "UIInspector"
 include(":protocol")
 include(":collector")
 include(":plugin")
+include(":agent-helper")
+include(":agent-native")

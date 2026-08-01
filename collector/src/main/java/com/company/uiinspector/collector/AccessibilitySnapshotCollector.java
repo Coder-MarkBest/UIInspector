@@ -167,18 +167,19 @@ public final class AccessibilitySnapshotCollector {
                 || key.contains("background") || key.contains("foreground") || key.contains("rend")) {
             return "renderingTransform";
         }
-        if (key.contains("text") || key.contains("hint") || key.contains("description")
+        if (key.equals("text") || key.contains("textsize") || key.contains("textcolor")
+                || key.contains("hint") || key.contains("description")
                 || key.contains("image") || key.contains("drawable")) {
             return "content";
+        }
+        if (key.contains("accessibility") || key.contains("screenreader") || key.contains("statedescription")
+                || key.contains("action") || key.contains("role") || key.contains("live")) {
+            return "accessibility";
         }
         if (key.contains("click") || key.contains("focus") || key.contains("select")
                 || key.contains("press") || key.contains("check") || key.contains("scroll")
                 || key.contains("enabled") || key.contains("activated") || key.contains("editable")) {
             return "interactionState";
-        }
-        if (key.contains("accessibility") || key.contains("action") || key.contains("role")
-                || key.contains("live") || key.contains("state")) {
-            return "accessibility";
         }
         return "identity";
     }

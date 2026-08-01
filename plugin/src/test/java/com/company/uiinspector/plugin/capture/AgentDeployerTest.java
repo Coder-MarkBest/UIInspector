@@ -2,6 +2,7 @@ package com.company.uiinspector.plugin.capture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.company.uiinspector.plugin.adb.AdbClient;
 import com.company.uiinspector.plugin.adb.CommandResult;
@@ -40,6 +41,10 @@ class AgentDeployerTest {
                         + "/data/user/0/com.example/code_cache/uiinspector/helper-capture-1.apk,"
                         + "/data/user/0/com.example/code_cache/uiinspector/snapshot-capture-1.json"),
                 adb.commands.stream().filter(command -> command.contains("attach-agent")).findFirst().orElseThrow());
+        assertTrue(adb.commands.contains(List.of(
+                "-s", "device", "shell", "run-as", "com.example", "chmod", "0444",
+                "code_cache/uiinspector/helper-capture-1.apk",
+                "code_cache/uiinspector/libuiinspector_agent_capture-1.so")));
     }
 
     @Test

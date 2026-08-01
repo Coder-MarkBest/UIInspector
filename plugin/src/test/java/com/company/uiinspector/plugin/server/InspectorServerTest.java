@@ -58,6 +58,17 @@ class InspectorServerTest {
         assertEquals(403, forbidden.statusCode());
         assertEquals(0, api.captureCalls);
 
+        URI mutate = server.baseUri().resolve("api/mutate?token=token");
+        var ok = client.send(HttpRequest.newBuilder(mutate)
+                        .header("Origin", server.baseUri().getScheme() + "://" + server.baseUri().getAuthority())
+                        .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                        .build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, ok.statusCode());
+        assertEquals(1, api.mutateCalls);
+
+        assertEquals(405, client.send(HttpRequest.newBuilder(mutate).GET().build(),
+                HttpResponse.BodyHandlers.ofString()).statusCode());
+
         server.close();
         assertThrows(Exception.class, () -> client.send(
                 HttpRequest.newBuilder(capture).GET().build(), HttpResponse.BodyHandlers.ofString()));
@@ -65,12 +76,17 @@ class InspectorServerTest {
 
     private static final class FakeApi implements InspectorServer.Api {
         int captureCalls;
+        int mutateCalls;
         @Override public String session() { return "{\"status\":\"ready\"}"; }
         @Override public String devices() { return "[]"; }
         @Override public String processes(Map<String, String> query) { return "[]"; }
         @Override public String capture(String body, Map<String, String> query) {
             captureCalls++;
             return "{\"status\":\"captured\"}";
+        }
+        @Override public String mutate(String body, Map<String, String> query) {
+            mutateCalls++;
+            return "{\"status\":\"mutated\"}";
         }
     }
 }

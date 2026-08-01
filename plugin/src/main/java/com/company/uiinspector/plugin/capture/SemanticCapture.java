@@ -29,6 +29,18 @@ public final class SemanticCapture {
         var result = adb.run(List.of(
                         "-s", serial, "exec-out", "content", "read", "--uri", uri.toString()),
                 Duration.ofSeconds(30)).requireSuccess("Semantic UI capture");
-        return SnapshotJson.decode(result.stdout());
+        InspectionSnapshot snapshot = SnapshotJson.decode(result.stdout());
+        return new InspectionSnapshot(
+                snapshot.schemaVersion(),
+                snapshot.capturedAtEpochMs(),
+                serial,
+                scope,
+                packageName,
+                snapshot.targetProcess(),
+                snapshot.processes(),
+                snapshot.windows(),
+                snapshot.nodes(),
+                snapshot.diagnostics(),
+                snapshot.screenshot());
     }
 }

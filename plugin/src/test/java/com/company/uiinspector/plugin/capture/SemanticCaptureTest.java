@@ -18,7 +18,7 @@ class SemanticCaptureTest {
     @Test
     void readsTargetSnapshotThroughContentProviderWithoutShellQuoting() throws Exception {
         var expected = new InspectionSnapshot(
-                1, 10L, "device", CaptureScope.TARGET_PROCESS, "com.example", "com.example",
+                1, 10L, "unknown", CaptureScope.TARGET_PROCESS, "com.example", "com.example",
                 List.of(), List.of(), Map.of(), List.of(), null);
         var adb = new SnapshotAdb(SnapshotJson.encode(expected));
 
@@ -26,6 +26,7 @@ class SemanticCaptureTest {
                 "device", CaptureScope.TARGET_PROCESS, "com.example");
 
         assertEquals("com.example", actual.targetPackage());
+        assertEquals("device", actual.deviceSerial());
         assertEquals(List.of(
                 "-s", "device", "exec-out", "content", "read", "--uri",
                 "content://com.company.uiinspector.collector/snapshot?scope=target&package=com.example&maxNodes=10000&maxDepth=200"),

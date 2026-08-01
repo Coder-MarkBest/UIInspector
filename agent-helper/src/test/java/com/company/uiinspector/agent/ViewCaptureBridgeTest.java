@@ -1,6 +1,7 @@
 package com.company.uiinspector.agent;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -34,6 +35,7 @@ public class ViewCaptureBridgeTest {
         title.setContentDescription("Current vehicle status");
         title.setAlpha(0.75f);
         title.setClickable(true);
+        title.setScreenReaderFocusable(true);
         FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(200, 60);
         titleParams.leftMargin = 12;
         titleParams.topMargin = 18;
@@ -72,6 +74,9 @@ public class ViewCaptureBridgeTest {
         assertEquals("12", textNode.propertyGroups().get(2).properties().get("marginLeft").value());
         assertEquals("0.75", textNode.propertyGroups().get(3).properties().get("alpha").value());
         assertEquals("true", textNode.propertyGroups().get(5).properties().get("clickable").value());
+        assertEquals("false", textNode.propertyGroups().get(5).properties().get("contextClickable").value());
+        assertFalse(textNode.propertyGroups().get(4).properties().containsKey("contextClickable"));
+        assertEquals("true", textNode.propertyGroups().get(6).properties().get("screenReaderFocusable").value());
         var imageNode = snapshot.nodes().values().stream()
                 .filter(node -> node.className().equals(ImageView.class.getName()))
                 .findFirst().orElseThrow();

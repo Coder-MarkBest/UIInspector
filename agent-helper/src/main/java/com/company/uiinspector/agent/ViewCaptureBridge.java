@@ -294,7 +294,8 @@ public final class ViewCaptureBridge {
         if (key.contains("backend") || key.contains("fidelity") || key.contains("warning")) return 7;
         if (key.contains("window") || key.contains("parent") || key.contains("child") || key.contains("depth")
                 || key.contains("drawing") || key.contains("layer") || key.contains("display")) return 1;
-        if (key.contains("text") || key.contains("hint") || key.contains("description") || key.contains("image")
+        if (key.equals("text") || key.contains("textsize") || key.contains("textcolor")
+                || key.contains("hint") || key.contains("description") || key.contains("image")
                 || key.contains("drawable") || key.contains("bitmap")) return 4;
         if (key.contains("bound") || key.equals("x") || key.equals("y") || key.contains("width")
                 || key.contains("height") || key.contains("padding") || key.contains("margin")
@@ -303,9 +304,10 @@ public final class ViewCaptureBridge {
                 || key.equals("z") || key.contains("translation") || key.contains("rotation") || key.contains("scale")
                 || key.contains("pivot") || key.contains("clip") || key.contains("background")
                 || key.contains("foreground") || key.contains("rend") || key.contains("format") || key.contains("dim")) return 3;
+        if (key.contains("accessibility") || key.contains("screenreader") || key.contains("statedescription")
+                || key.contains("action") || key.contains("role") || key.contains("live")) return 6;
         if (key.contains("click") || key.contains("focus") || key.contains("select") || key.contains("press")
                 || key.contains("check") || key.contains("scroll") || key.contains("enabled") || key.contains("activated")) return 5;
-        if (key.contains("accessibility") || key.contains("action") || key.contains("role") || key.contains("live")) return 6;
         return 0;
     }
 

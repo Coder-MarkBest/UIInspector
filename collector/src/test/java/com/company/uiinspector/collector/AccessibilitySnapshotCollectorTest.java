@@ -35,6 +35,8 @@ public class AccessibilitySnapshotCollectorTest {
                 "alpha", "1.0",
                 "text", "Hello",
                 "clickable", "true",
+                "contextClickable", "false",
+                "screenReaderFocusable", "true",
                 "actions", "ACTION_CLICK",
                 "backend", "Accessibility"));
         var otherRoot = node("com.other", "Button", Map.of("class", "Button"));
@@ -55,6 +57,8 @@ public class AccessibilitySnapshotCollectorTest {
         assertFalse(groups.get(0).properties().isEmpty());
         assertEquals("0", groups.get(1).properties().get("depth").value());
         assertEquals("Hello", groups.get(4).properties().get("text").value());
+        assertEquals("false", groups.get(5).properties().get("contextClickable").value());
+        assertEquals("true", groups.get(6).properties().get("screenReaderFocusable").value());
     }
 
     @Test

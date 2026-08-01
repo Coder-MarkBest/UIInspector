@@ -2,6 +2,6 @@
 .idea/
 .superpowers/
 **/build/
+**/.cxx/
 local.properties
 *.iml
-

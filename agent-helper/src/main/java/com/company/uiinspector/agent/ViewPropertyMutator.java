@@ -22,17 +22,23 @@ import java.util.Objects;
 
 final class ViewPropertyMutator {
     private final WindowUpdater windowUpdater;
+    private final SnapshotCapture snapshotCapture;
 
     ViewPropertyMutator() {
         this((root, params) -> {
             WindowManager manager = (WindowManager) root.getContext().getSystemService(Context.WINDOW_SERVICE);
             if (manager == null) throw new IllegalStateException("WindowManager is unavailable");
             manager.updateViewLayout(root, params);
-        });
+        }, ViewPropertyMutator::captureSnapshot);
     }
 
     ViewPropertyMutator(WindowUpdater windowUpdater) {
+        this(windowUpdater, ViewPropertyMutator::captureSnapshot);
+    }
+
+    ViewPropertyMutator(WindowUpdater windowUpdater, SnapshotCapture snapshotCapture) {
         this.windowUpdater = windowUpdater;
+        this.snapshotCapture = snapshotCapture;
     }
 
     Outcome apply(
@@ -61,8 +67,10 @@ final class ViewPropertyMutator {
             throw failure("capability_mismatch", "Edit capability no longer matches the current target");
         }
 
-        InspectionSnapshot before = capture(roots, windowParams);
-        String previousValue = property(before, command.targetId(), command.propertyName());
+        String previousValue = target.windowIndex() == null
+                ? ViewCaptureBridge.currentViewProperty(target.view(), command.propertyName())
+                : ViewCaptureBridge.currentWindowProperty(
+                        target.view(), target.windowParams(), command.propertyName());
         if (previousValue == null) throw failure("property_not_found", "Property is no longer available");
 
         try {
@@ -82,7 +90,7 @@ final class ViewPropertyMutator {
             throw failure("apply_failed", cause.getClass().getSimpleName() + ": " + safeMessage(cause));
         }
 
-        InspectionSnapshot after = capture(roots, windowParams);
+        InspectionSnapshot after = snapshotCapture.capture(roots, windowParams);
         String appliedValue = property(after, command.targetId(), command.propertyName());
         return new Outcome("ok", previousValue, appliedValue, after);
     }
@@ -269,7 +277,7 @@ final class ViewPropertyMutator {
         view.setLayoutParams(params);
     }
 
-    private static InspectionSnapshot capture(
+    private static InspectionSnapshot captureSnapshot(
             List<View> roots,
             List<WindowManager.LayoutParams> params) {
         String packageName = roots.isEmpty() ? null : roots.get(0).getContext().getPackageName();
@@ -331,6 +339,13 @@ final class ViewPropertyMutator {
     @FunctionalInterface
     interface WindowUpdater {
         void update(View root, WindowManager.LayoutParams params);
+    }
+
+    @FunctionalInterface
+    interface SnapshotCapture {
+        InspectionSnapshot capture(
+                List<View> roots,
+                List<WindowManager.LayoutParams> params);
     }
 
     private record Target(View view, WindowManager.LayoutParams windowParams, Integer windowIndex) {}

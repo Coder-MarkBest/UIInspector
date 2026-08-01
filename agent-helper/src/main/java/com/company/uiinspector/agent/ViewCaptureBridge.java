@@ -266,6 +266,18 @@ public final class ViewCaptureBridge {
         return values;
     }
 
+    static String currentViewProperty(View view, String propertyName) {
+        int childCount = view instanceof ViewGroup group ? group.getChildCount() : 0;
+        return viewProperties(view, "", "", null, childCount, 0, 0).get(propertyName);
+    }
+
+    static String currentWindowProperty(
+            View root,
+            WindowManager.LayoutParams params,
+            String propertyName) {
+        return windowProperties("", params, root).get(propertyName);
+    }
+
     private static void addLayoutParams(Map<String, String> values, ViewGroup.LayoutParams params) {
         if (params == null) return;
         values.put("layoutParamsClass", params.getClass().getName());

@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 public final class ViewCaptureBridge {
     private static final List<String> GROUPS = List.of(
@@ -91,7 +92,8 @@ public final class ViewCaptureBridge {
                     root.hasWindowFocus(),
                     params == null || params.getTitle() == null ? root.getClass().getSimpleName() : params.getTitle().toString(),
                     rootId,
-                    group(windowProperties(windowId, params, root), "JVMTI")));
+                    group(windowProperties(windowId, params, root), "JVMTI",
+                            property -> PropertyEditors.forWindow(root, params, property))));
         }
         if (counter.truncated) {
             diagnostics.add(new Diagnostic("WARN", "node_limit", "View capture reached its node or depth limit."));
@@ -133,7 +135,8 @@ public final class ViewCaptureBridge {
         output.put(id, new UiNode(
                 id, CaptureSource.JVMTI, windowId, parentId, childIds, depth,
                 view.getClass().getName(), resourceId(view), text(view), description(view),
-                bounds(view), visibleBounds(view), drawingOrder, group(values, "JVMTI")));
+                bounds(view), visibleBounds(view), drawingOrder,
+                group(values, "JVMTI", property -> PropertyEditors.forView(view, property))));
     }
 
     private static Map<String, String> viewProperties(
@@ -278,11 +281,18 @@ public final class ViewCaptureBridge {
         }
     }
 
-    private static List<PropertyGroup> group(Map<String, String> values, String source) {
+    private static List<PropertyGroup> group(
+            Map<String, String> values,
+            String source,
+            Function<String, PropertyEditors.Description> editorLookup) {
         List<Map<String, PropertyValue>> maps = new ArrayList<>();
         for (int i = 0; i < GROUPS.size(); i++) maps.add(new LinkedHashMap<>());
         values.forEach((name, value) -> {
-            if (value != null) maps.get(groupIndex(name)).put(name, new PropertyValue(value, source));
+            if (value != null) {
+                PropertyEditors.Description description = editorLookup.apply(name);
+                maps.get(groupIndex(name)).put(name, new PropertyValue(
+                        value, source, description.editor(), description.readOnlyReason()));
+            }
         });
         List<PropertyGroup> result = new ArrayList<>();
         for (int i = 0; i < GROUPS.size(); i++) result.add(new PropertyGroup(GROUPS.get(i), maps.get(i)));

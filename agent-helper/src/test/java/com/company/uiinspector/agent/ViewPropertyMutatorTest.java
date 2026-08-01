@@ -131,6 +131,23 @@ public class ViewPropertyMutatorTest {
     }
 
     @Test
+    public void performsOnlyOneFullTreeCapturePerMutation() {
+        int[] captures = {0};
+        var countingMutator = new ViewPropertyMutator(
+                (view, params) -> {},
+                (capturedRoots, capturedWindows) -> {
+                    captures[0]++;
+                    return ViewCaptureBridge.captureNow(
+                            capturedRoots, capturedWindows, "", "com.example", "com.example");
+                });
+
+        countingMutator.apply(roots, windows, commandFor(
+                title, "alpha", "setter:setAlpha", VIEW, FLOAT, "0.6"));
+
+        assertEquals(1, captures[0]);
+    }
+
+    @Test
     public void rejectsComplexUnknownOverflowAndNonFiniteValues() {
         assertFailure("property_read_only", commandFor(
                 title, "background", "setter:setBackground", VIEW, STRING, "x"));

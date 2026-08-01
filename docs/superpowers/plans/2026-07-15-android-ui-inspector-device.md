@@ -1,4 +1,6 @@
-# Android UI Inspector Device Implementation Plan
+# Android UI Inspector Device Implementation Plan（历史方案）
+
+> 本计划描述早期 SDK 集成路径，已被 `2026-08-01-android-studio-ui-inspector-plugin.md` 取代，不再执行。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

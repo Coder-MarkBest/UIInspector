@@ -1,1 +1,0 @@
-/Users/xianxiaoli/ClaudeProjects/UIInspector/agent-native/build/intermediates/cxx/RelWithDebInfo/b6prt5p6/obj/x86_64

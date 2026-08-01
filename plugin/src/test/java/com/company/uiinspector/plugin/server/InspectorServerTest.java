@@ -36,8 +36,9 @@ class InspectorServerTest {
             assertEquals("text/html; charset=utf-8", page.headers().firstValue("content-type").orElseThrow());
 
             var css = client.send(HttpRequest.newBuilder(
-                            server.baseUri().resolve("styles.css?token=secret-token")).GET().build(),
+                            server.baseUri().resolve("styles.css")).GET().build(),
                     HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, css.statusCode());
             assertEquals("text/css; charset=utf-8", css.headers().firstValue("content-type").orElseThrow());
         }
     }

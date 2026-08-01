@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">UI Inspector Collector</string>
+    <string name="accessibility_description">Collects public UI window and node information on developer devices.</string>
+</resources>
+

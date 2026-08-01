@@ -2,7 +2,7 @@
 #include <android/log.h>
 
 #include <string>
-#include <utility>
+#include <vector>
 
 namespace {
 
@@ -16,11 +16,32 @@ bool clear_exception(JNIEnv* env, const char* operation) {
     return true;
 }
 
-std::pair<std::string, std::string> parse_options(const char* options) {
+struct AgentOptions {
+    std::string helper_path;
+    std::string command_path;
+    std::string output_path;
+};
+
+bool parse_options(const char* options, AgentOptions* result) {
     std::string value = options == nullptr ? "" : options;
-    const auto separator = value.find(',');
-    if (separator == std::string::npos) return {value, ""};
-    return {value.substr(0, separator), value.substr(separator + 1)};
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (true) {
+        const auto separator = value.find(',', start);
+        parts.push_back(value.substr(start, separator - start));
+        if (separator == std::string::npos) break;
+        start = separator + 1;
+    }
+    if ((parts.size() != 2 && parts.size() != 3) || parts[0].empty()) return false;
+    result->helper_path = parts[0];
+    if (parts.size() == 2) {
+        result->output_path = parts[1];
+    } else {
+        result->command_path = parts[1];
+        result->output_path = parts[2];
+    }
+    return !result->output_path.empty()
+            && (parts.size() == 2 || !result->command_path.empty());
 }
 
 jobject current_application(JNIEnv* env) {
@@ -105,7 +126,7 @@ jobject collect_window_params(JNIEnv* env, jobject roots, jint view_count) {
     return result;
 }
 
-jclass load_helper(JNIEnv* env, const std::string& helper_path) {
+jclass load_helper(JNIEnv* env, const std::string& helper_path, const char* class_name) {
     jobject application = current_application(env);
     if (application == nullptr) return nullptr;
     jclass application_class = env->GetObjectClass(application);
@@ -128,7 +149,7 @@ jclass load_helper(JNIEnv* env, const std::string& helper_path) {
     jclass loader_class = env->FindClass("java/lang/ClassLoader");
     jmethodID load = env->GetMethodID(
             loader_class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring helper_name = env->NewStringUTF("com.company.uiinspector.agent.ViewCaptureBridge");
+    jstring helper_name = env->NewStringUTF(class_name);
     jobject helper = env->CallObjectMethod(loader, load, helper_name);
     if (helper == nullptr || clear_exception(env, "Load ViewCaptureBridge")) return nullptr;
     return static_cast<jclass>(helper);
@@ -143,7 +164,8 @@ bool run_capture(JNIEnv* env, const std::string& helper_path, const std::string&
     jobject params = collect_window_params(env, roots, size(env, views));
     if (params == nullptr) return false;
 
-    jclass helper = load_helper(env, helper_path);
+    jclass helper = load_helper(
+            env, helper_path, "com.company.uiinspector.agent.ViewCaptureBridge");
     if (helper == nullptr) return false;
     jmethodID capture = env->GetStaticMethodID(
             helper, "capture",
@@ -154,6 +176,32 @@ bool run_capture(JNIEnv* env, const std::string& helper_path, const std::string&
     return !clear_exception(env, "Call ViewCaptureBridge.capture");
 }
 
+bool run_mutation(
+        JNIEnv* env,
+        const std::string& helper_path,
+        const std::string& command_path,
+        const std::string& output_path) {
+    jobject global = window_manager_global(env);
+    if (global == nullptr) return false;
+    jobject views = field(env, global, "mViews", "Ljava/util/ArrayList;");
+    if (views == nullptr) return false;
+    jobject roots = field(env, global, "mRoots", "Ljava/util/ArrayList;");
+    jobject params = collect_window_params(env, roots, size(env, views));
+    if (params == nullptr) return false;
+
+    jclass helper = load_helper(
+            env, helper_path, "com.company.uiinspector.agent.ViewMutationBridge");
+    if (helper == nullptr) return false;
+    jmethodID mutate = env->GetStaticMethodID(
+            helper, "mutate",
+            "(Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V");
+    if (mutate == nullptr || clear_exception(env, "Find ViewMutationBridge.mutate")) return false;
+    jstring command = env->NewStringUTF(command_path.c_str());
+    jstring output = env->NewStringUTF(output_path.c_str());
+    env->CallStaticVoidMethod(helper, mutate, views, params, command, output);
+    return !clear_exception(env, "Call ViewMutationBridge.mutate");
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jint JNICALL Agent_OnAttach(JavaVM* vm, char* options, void*) {
@@ -162,10 +210,15 @@ extern "C" JNIEXPORT jint JNICALL Agent_OnAttach(JavaVM* vm, char* options, void
         __android_log_print(ANDROID_LOG_ERROR, kTag, "Unable to obtain JNIEnv");
         return JNI_ERR;
     }
-    auto [helper_path, output_path] = parse_options(options);
-    if (helper_path.empty() || output_path.empty()) {
-        __android_log_print(ANDROID_LOG_ERROR, kTag, "Expected helper APK and snapshot output options");
+    AgentOptions parsed;
+    if (!parse_options(options, &parsed)) {
+        __android_log_print(
+                ANDROID_LOG_ERROR, kTag,
+                "Expected helper/output capture options or helper/command/output mutation options");
         return JNI_ERR;
     }
-    return run_capture(env, helper_path, output_path) ? JNI_OK : JNI_ERR;
+    const bool success = parsed.command_path.empty()
+            ? run_capture(env, parsed.helper_path, parsed.output_path)
+            : run_mutation(env, parsed.helper_path, parsed.command_path, parsed.output_path);
+    return success ? JNI_OK : JNI_ERR;
 }

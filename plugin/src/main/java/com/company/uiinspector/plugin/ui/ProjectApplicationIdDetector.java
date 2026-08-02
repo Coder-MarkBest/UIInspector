@@ -3,6 +3,8 @@ package com.company.uiinspector.plugin.ui;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -14,17 +16,23 @@ public final class ProjectApplicationIdDetector {
     private ProjectApplicationIdDetector() {}
 
     public static Optional<String> detect(Path projectRoot) {
-        if (projectRoot == null || !Files.isDirectory(projectRoot)) return Optional.empty();
+        return detectAll(projectRoot).stream().findFirst();
+    }
+
+    public static List<String> detectAll(Path projectRoot) {
+        if (projectRoot == null || !Files.isDirectory(projectRoot)) return List.of();
         try (var paths = Files.walk(projectRoot, 5)) {
-            return paths.filter(Files::isRegularFile)
+            var applicationIds = new LinkedHashSet<String>();
+            paths.filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString().equals("build.gradle")
                             || path.getFileName().toString().equals("build.gradle.kts"))
                     .sorted()
                     .map(ProjectApplicationIdDetector::readApplicationId)
                     .flatMap(Optional::stream)
-                    .findFirst();
+                    .forEach(applicationIds::add);
+            return List.copyOf(applicationIds);
         } catch (IOException ignored) {
-            return Optional.empty();
+            return List.of();
         }
     }
 

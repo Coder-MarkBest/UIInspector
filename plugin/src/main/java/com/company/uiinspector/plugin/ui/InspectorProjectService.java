@@ -43,9 +43,9 @@ public final class InspectorProjectService implements Disposable {
         payloads = PayloadExtractor.fromResources(getClass().getClassLoader());
         collector = new CollectorManager(adb, payloads.collectorApk());
         var deployer = new AgentDeployer(adb, payloads.agentPayloads(), () -> UUID.randomUUID().toString());
-        String defaultPackage = project.getBasePath() == null ? null
-                : ProjectApplicationIdDetector.detect(Path.of(project.getBasePath())).orElse(null);
-        var api = new InspectorApi(adb, collector, deployer, defaultPackage);
+        List<String> projectPackages = project.getBasePath() == null ? List.of()
+                : ProjectApplicationIdDetector.detectAll(Path.of(project.getBasePath()));
+        var api = new InspectorApi(adb, collector, deployer, projectPackages);
         server = new InspectorServer(token(), api, this::webResource);
         server.start();
         return server.browserUri();

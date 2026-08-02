@@ -118,7 +118,7 @@ public final class InspectorApi implements InspectorServer.Api {
         String serial = query.get("serial");
         if (serial == null || serial.isBlank()) return "[]";
         try {
-            return GSON.toJson(processes.list(serial));
+            return GSON.toJson(processes.listForUi(serial, projectPackages));
         } catch (Exception error) {
             return error(error);
         }

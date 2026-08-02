@@ -1,9 +1,11 @@
 package com.company.uiinspector.plugin.adb;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 public final class AdbParsers {
@@ -58,5 +60,24 @@ public final class AdbParsers {
         return Pattern.compile("(?:^|[\\s\\[])DEBUGGABLE(?:$|[\\s\\]])")
                 .matcher(dumpsysPackage)
                 .find();
+    }
+
+    public static Set<Integer> debuggablePids(String output) {
+        Set<Integer> pids = new LinkedHashSet<>();
+        for (String raw : output.split("\\R")) {
+            try {
+                int pid = Integer.parseInt(raw.strip());
+                if (pid > 0) pids.add(pid);
+            } catch (NumberFormatException ignored) {
+                // Ignore non-PID diagnostic lines.
+            }
+        }
+        return Set.copyOf(pids);
+    }
+
+    public static boolean isApplicationProcess(RunningProcess process) {
+        String name = process.processName();
+        String base = name.contains(":") ? name.substring(0, name.indexOf(':')) : name;
+        return PACKAGE_NAME.matcher(base).matches();
     }
 }

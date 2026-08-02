@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AdbParsersTest {
@@ -48,5 +49,10 @@ class AdbParsersTest {
     void recognizesDebuggablePackageFlagsOnly() {
         assertTrue(AdbParsers.debuggable("flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]"));
         assertFalse(AdbParsers.debuggable("flags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]"));
+    }
+
+    @Test
+    void parsesOnlyPositiveJdwpProcessIds() {
+        assertEquals(Set.of(410, 512), AdbParsers.debuggablePids("410\ninvalid\n0\n-3\n512\n"));
     }
 }

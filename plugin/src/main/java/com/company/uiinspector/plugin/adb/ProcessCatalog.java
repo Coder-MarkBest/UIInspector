@@ -21,16 +21,17 @@ public final class ProcessCatalog {
 
     public List<ProcessInfo> listForUi(String serial, List<String> projectPackages)
             throws IOException, InterruptedException {
-        Set<Integer> debuggablePids = AdbParsers.debuggablePids(adb.run(
-                        List.of("-s", serial, "jdwp"), Duration.ofSeconds(15))
-                .requireSuccess("Listing debuggable processes").stdout());
+        Set<String> debuggablePackages = AdbParsers.debuggablePackages(adb.run(
+                        List.of("-s", serial, "shell", "dumpsys", "package", "packages"),
+                        Duration.ofSeconds(15))
+                .requireSuccess("Listing debuggable packages").stdout());
         Set<String> projects = projectPackages == null
                 ? Set.of() : new HashSet<>(projectPackages);
         return list(serial).stream()
                 .filter(AdbParsers::isApplicationProcess)
                 .map(value -> new ProcessInfo(
                         value.pid(), value.user(), value.packageName(), value.processName(),
-                        debuggablePids.contains(value.pid())))
+                        debuggablePackages.contains(value.packageName())))
                 .sorted(Comparator
                         .comparingInt((ProcessInfo value) -> priority(value, projects))
                         .thenComparing(ProcessInfo::processName)

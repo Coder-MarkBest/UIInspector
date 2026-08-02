@@ -4,7 +4,7 @@
 
 **Goal:** Automatically capture the running process from the current Android project when the inspector opens, while filtering obvious non-UI processes and prioritizing debuggable processes.
 
-**Architecture:** Extend the existing Gradle application-ID detector to return all project application packages, enrich the ADB process catalog with one-shot JDWP debug status, and keep browser startup orchestration in pure, testable helpers. The existing capture endpoint remains the only collection path.
+**Architecture:** Extend the existing Gradle application-ID detector to return all project application packages, enrich the ADB process catalog with a bounded PackageManager debug-status dump, and keep browser startup orchestration in pure, testable helpers. The existing capture endpoint remains the only collection path.
 
 **Tech Stack:** Java 21, JUnit 5, ADB, vanilla JavaScript, Node test runner, IntelliJ Platform/Android Studio plugin.
 
@@ -78,12 +78,12 @@ git commit -m "feat: detect project application processes"
 - Create: `plugin/src/test/java/com/company/uiinspector/plugin/adb/ProcessCatalogTest.java`
 
 **Interfaces:**
-- Produces: `AdbParsers.debuggablePids(String): Set<Integer>`.
+- Produces: `AdbParsers.debuggablePackages(String): Set<String>`.
 - Produces: `ProcessCatalog.listForUi(String, List<String>): List<ProcessInfo>`.
 
 - [ ] **Step 1: Write failing parser and catalog tests**
 
-Assert that package-like main and secondary processes survive, while `init`, `system_server`, `surfaceflinger`, `webview_zygote`, and hardware-service names are removed. Feed JDWP output `410\n512\n` and assert those PIDs are marked debuggable. Assert ordering: project main, project secondary, other debuggable, then other application-like process.
+Assert that package-like main and secondary processes survive, while `init`, `system_server`, `surfaceflinger`, `webview_zygote`, and hardware-service names are removed. Feed PackageManager blocks with and without `DEBUGGABLE` flags and assert matching processes are marked debuggable. Assert ordering: project main, project secondary, other debuggable, then other application-like process.
 
 - [ ] **Step 2: Run the focused tests and verify RED**
 
@@ -93,7 +93,7 @@ Expected: compilation fails because the new parser/catalog APIs do not exist.
 
 - [ ] **Step 3: Implement package-like filtering and JDWP parsing**
 
-Keep `AdbParsers.processes` as the raw `ps` parser. Add package validation against the base process name and parse one positive integer per JDWP line. In `ProcessCatalog.listForUi`, execute `ps -A` and `adb jdwp`, map results to `ProcessInfo`, and sort with deterministic comparators.
+Keep `AdbParsers.processes` as the raw `ps` parser. Add package validation against the base process name and parse `DEBUGGABLE` from PackageManager package blocks. In `ProcessCatalog.listForUi`, execute `ps -A` and a bounded `dumpsys package packages`, map results to `ProcessInfo`, and sort with deterministic comparators.
 
 - [ ] **Step 4: Return the enriched list from `/api/processes`**
 

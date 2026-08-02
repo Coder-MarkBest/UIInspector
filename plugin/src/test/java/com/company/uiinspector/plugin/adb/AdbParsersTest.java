@@ -52,7 +52,22 @@ class AdbParsersTest {
     }
 
     @Test
-    void parsesOnlyPositiveJdwpProcessIds() {
-        assertEquals(Set.of(410, 512), AdbParsers.debuggablePids("410\ninvalid\n0\n-3\n512\n"));
+    void parsesDebuggablePackagesWithoutLeakingFlagsBetweenPackageBlocks() {
+        String output = """
+                Packages:
+                  Package [com.example.debug] (abc):
+                    appId=10100
+                    flags=[ DEBUGGABLE HAS_CODE ]
+                  Package [com.example.release] (def):
+                    appId=10101
+                    flags=[ HAS_CODE ]
+                  Package [com.example.other] (ghi):
+                    appId=10102
+                    pkgFlags=[ DEBUGGABLE HAS_CODE ]
+                """;
+
+        assertEquals(
+                Set.of("com.example.debug", "com.example.other"),
+                AdbParsers.debuggablePackages(output));
     }
 }

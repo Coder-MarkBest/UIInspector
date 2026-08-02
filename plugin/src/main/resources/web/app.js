@@ -10,10 +10,12 @@ import {
   mutationKey,
   outsideViewport,
   pickNodeAt,
+  preferredProjectProcess,
   previewPoint,
   propertyEditorModel,
   rememberOriginalValue,
-  selectNode
+  selectNode,
+  shouldAutoCapture
 } from './inspector-core.js';
 
 const token = new URLSearchParams(location.search).get('token') ?? '';
@@ -28,7 +30,8 @@ const elements = Object.fromEntries([
 
 let state = {
   snapshot: null,
-  defaultPackage: null,
+  projectPackages: [],
+  autoCaptureAttempted: false,
   stage: '2d',
   threeMode: 'windows',
   displayId: 0,
@@ -107,15 +110,17 @@ async function initialize() {
   try {
     const [session, devices] = await Promise.all([api('api/session'), api('api/devices')]);
     if (session.error) throw new Error(session.error);
-    state.defaultPackage = session.defaultPackage;
+    state.projectPackages = Array.isArray(session.projectPackages)
+      ? session.projectPackages
+      : session.defaultPackage ? [session.defaultPackage] : [];
     if (session.snapshot) applySnapshot(session.snapshot);
-    fillDevices(Array.isArray(devices) ? devices : []);
+    await fillDevices(Array.isArray(devices) ? devices : [], true);
   } catch (error) {
     fail(error);
   }
 }
 
-async function loadProcesses() {
+async function loadProcesses(autoCapture = false) {
   const serial = elements['device-select'].value;
   elements['process-select'].replaceChildren(option('', '选择进程'));
   if (!serial) return;
@@ -126,8 +131,13 @@ async function loadProcesses() {
       const item = option(String(process.pid), `${process.processName} · ${process.pid}`);
       item.dataset.package = process.packageName;
       item.dataset.process = process.processName;
-      if (state.defaultPackage && (process.packageName === state.defaultPackage || process.processName === state.defaultPackage)) item.selected = true;
       elements['process-select'].append(item);
+    }
+    const preferred = preferredProjectProcess(processes, state.projectPackages);
+    if (preferred) elements['process-select'].value = String(preferred.pid);
+    if (autoCapture && shouldAutoCapture({ attempted: state.autoCaptureAttempted, process: preferred })) {
+      state.autoCaptureAttempted = true;
+      await capture();
     }
   } catch (error) {
     fail(error);
@@ -665,7 +675,7 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-function fillDevices(devices) {
+async function fillDevices(devices, autoCapture = false) {
   elements['device-select'].replaceChildren(option('', '选择设备'));
   for (const device of devices) {
     const item = option(device.serial, `${device.model ?? device.serial} · ${device.state}`);
@@ -675,7 +685,7 @@ function fillDevices(devices) {
   const first = devices.find(device => device.ready);
   if (first) {
     elements['device-select'].value = first.serial;
-    loadProcesses();
+    await loadProcesses(autoCapture);
   }
 }
 

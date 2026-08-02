@@ -93,6 +93,16 @@ export function dragRotation(rotationX, rotationZ, deltaX, deltaY) {
   };
 }
 
+export function preferredProjectProcess(processes, projectPackages) {
+  const packages = new Set(projectPackages ?? []);
+  const matches = (processes ?? []).filter(process => packages.has(process.packageName));
+  return matches.find(process => process.processName === process.packageName) ?? matches[0] ?? null;
+}
+
+export function shouldAutoCapture({ attempted, process }) {
+  return !attempted && Boolean(process);
+}
+
 export function groupProperties(target) {
   const source = new Map((target?.propertyGroups ?? []).map(group => [group.name, group.properties ?? {}]));
   return PROPERTY_GROUP_ORDER.map(name => ({ name, properties: source.get(name) ?? {} }));

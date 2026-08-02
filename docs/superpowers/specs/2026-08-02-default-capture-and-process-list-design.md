@@ -14,7 +14,7 @@ The browser receives the ordered project application IDs in the session response
 
 `ProcessCatalog` continues to read `ps -A`, then keeps processes whose base process name is a valid Android package name. This removes obvious native daemons, kernel workers, zygotes, and framework processes without hiding legitimate application secondary processes or system applications that can own Windows.
 
-Debuggable PIDs are collected in one `adb jdwp` call. The `/api/processes` response includes `debuggable` for every remaining process and is sorted by:
+Debuggable packages are collected in one bounded `dumpsys package packages` call and mapped to their running processes. The `/api/processes` response includes `debuggable` for every remaining process and is sorted by:
 
 1. current-project main process;
 2. current-project secondary processes;
@@ -22,7 +22,7 @@ Debuggable PIDs are collected in one `adb jdwp` call. The `/api/processes` respo
 4. remaining application-like processes;
 5. stable process name and PID tie-breakers.
 
-This ordering keeps the default target deterministic and avoids one `dumpsys package` call per process.
+This ordering keeps the default target deterministic and avoids one `dumpsys package` call per process. The bounded PackageManager dump is used instead of the streaming `adb jdwp` command, which does not terminate consistently across ADB versions.
 
 ## Browser initialization
 
@@ -38,7 +38,7 @@ Initialization keeps the existing first-ready-device behavior. After the first d
 
 ## Verification
 
-- Java tests cover package-like process filtering, JDWP PID parsing, debuggable ordering, project-process priority, and multiple application IDs.
+- Java tests cover package-like process filtering, PackageManager flag parsing, debuggable ordering, project-process priority, and multiple application IDs.
 - JavaScript tests cover deterministic preferred-process selection and the one-time auto-capture decision.
 - Existing web tests, Gradle tests, plugin assembly, and Plugin Verifier must pass.
 - A browser smoke test confirms opening the page selects the project process and produces a captured snapshot without clicking the capture button.

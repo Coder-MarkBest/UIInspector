@@ -23,7 +23,15 @@ class ProcessCatalogTest {
                     u0_a12 411 1 1 1 0 0 S com.example.current
                     u0_a13 512 1 1 1 0 0 S com.example.debug
                     u0_a14 513 1 1 1 0 0 S com.example.release
-                    """ : "410\n411\n512\n";
+                    """ : """
+                    Packages:
+                      Package [com.example.current] (abc):
+                        flags=[ DEBUGGABLE HAS_CODE ]
+                      Package [com.example.debug] (def):
+                        flags=[ DEBUGGABLE HAS_CODE ]
+                      Package [com.example.release] (ghi):
+                        flags=[ HAS_CODE ]
+                    """;
             return new CommandResult(0, output, "", output.getBytes());
         };
 

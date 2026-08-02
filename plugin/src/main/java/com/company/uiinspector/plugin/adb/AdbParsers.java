@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 
 public final class AdbParsers {
     private static final Pattern PACKAGE_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+");
+    private static final Pattern PACKAGE_HEADER = Pattern.compile("^\\s*Package \\[([^]]+)]");
 
     private AdbParsers() {}
 
@@ -62,17 +63,21 @@ public final class AdbParsers {
                 .find();
     }
 
-    public static Set<Integer> debuggablePids(String output) {
-        Set<Integer> pids = new LinkedHashSet<>();
+    public static Set<String> debuggablePackages(String output) {
+        Set<String> packages = new LinkedHashSet<>();
+        String currentPackage = null;
         for (String raw : output.split("\\R")) {
-            try {
-                int pid = Integer.parseInt(raw.strip());
-                if (pid > 0) pids.add(pid);
-            } catch (NumberFormatException ignored) {
-                // Ignore non-PID diagnostic lines.
+            var header = PACKAGE_HEADER.matcher(raw);
+            if (header.find()) {
+                currentPackage = header.group(1);
+                continue;
             }
+            String line = raw.strip();
+            if (currentPackage != null
+                    && (line.startsWith("flags=[") || line.startsWith("pkgFlags=["))
+                    && debuggable(line)) packages.add(currentPackage);
         }
-        return Set.copyOf(pids);
+        return Set.copyOf(packages);
     }
 
     public static boolean isApplicationProcess(RunningProcess process) {

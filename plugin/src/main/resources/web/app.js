@@ -21,6 +21,7 @@ import {
   rememberOriginalValue,
   rememberPropertyGroupOpen,
   selectNode,
+  screenshotSlice,
   shouldAutoCapture,
   windowViewZIndex
 } from './inspector-core.js';
@@ -361,11 +362,19 @@ function render3d(items) {
       plane.type = 'button';
     }
     const itemBounds = item.bounds ?? bounds;
+    const slice = screenshotSlice(itemBounds, bounds, state.snapshot.screenshot?.dataUrl);
     plane.style.left = `${((itemBounds.left - bounds.left) / width) * 100}%`;
     plane.style.top = `${((itemBounds.top - bounds.top) / height) * 100}%`;
     plane.style.width = `${Math.max(4, ((itemBounds.right - itemBounds.left) / width) * 100)}%`;
     plane.style.height = `${Math.max(4, ((itemBounds.bottom - itemBounds.top) / height) * 100)}%`;
     plane.style.transform = `translateZ(${z}px)`;
+    if (slice) {
+      plane.classList.add('has-screenshot');
+      plane.style.backgroundImage = `url("${slice.dataUrl}")`;
+      plane.style.backgroundSize = `${slice.sizeX}% ${slice.sizeY}%`;
+      plane.style.backgroundPosition = `${slice.positionX}% ${slice.positionY}%`;
+      plane.style.backgroundRepeat = 'no-repeat';
+    }
     const selected = windowMode
       ? item.id === state.selectedWindowId && !state.selectedNodeId
       : item.id === state.selectedNodeId;

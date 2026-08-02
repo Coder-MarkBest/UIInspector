@@ -22,6 +22,7 @@ import {
   rememberOriginalValue,
   rememberPropertyGroupOpen,
   selectNode,
+  screenshotSlice,
   shouldAutoCapture,
   windowViewZIndex
 } from '../../main/resources/web/inspector-core.js';
@@ -70,6 +71,29 @@ test('Window View bounds normalize against the containing Window', () => {
     height: 50
   });
   assert.equal(relativeBounds(rect(0, 0, 10, 10), rect(0, 0, 0, 10)), null);
+});
+
+test('3D screenshot slices map a View back to the containing screenshot', () => {
+  assert.deepEqual(
+    screenshotSlice(rect(200, 100, 400, 300), rect(0, 0, 800, 400), 'data:image/png;base64,abc'),
+    {
+      dataUrl: 'data:image/png;base64,abc',
+      sizeX: 400,
+      sizeY: 200,
+      positionX: 33.33333333333333,
+      positionY: 50
+    }
+  );
+  assert.deepEqual(
+    screenshotSlice(rect(0, 0, 800, 400), rect(0, 0, 800, 400), 'data:image/png;base64,abc'),
+    { dataUrl: 'data:image/png;base64,abc', sizeX: 100, sizeY: 100, positionX: 0, positionY: 0 }
+  );
+});
+
+test('3D screenshot slices reject missing pixels and invalid geometry', () => {
+  assert.equal(screenshotSlice(rect(0, 0, 10, 10), rect(0, 0, 20, 20), ''), null);
+  assert.equal(screenshotSlice(rect(0, 0, 0, 10), rect(0, 0, 20, 20), 'data:image/png;base64,abc'), null);
+  assert.equal(screenshotSlice(rect(0, 0, 10, 10), rect(0, 0, 0, 20), 'data:image/png;base64,abc'), null);
 });
 
 test('3D Window View stacking keeps descendants above selected ancestors', () => {

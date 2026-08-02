@@ -93,6 +93,24 @@ export function relativeBounds(bounds, containerBounds) {
   };
 }
 
+export function screenshotSlice(bounds, contentBounds, dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl) return null;
+  const item = positiveRect(bounds);
+  const content = positiveRect(contentBounds);
+  if (!item || !content) return null;
+  const itemWidth = item.right - item.left;
+  const itemHeight = item.bottom - item.top;
+  const contentWidth = content.right - content.left;
+  const contentHeight = content.bottom - content.top;
+  return {
+    dataUrl,
+    sizeX: contentWidth / itemWidth * 100,
+    sizeY: contentHeight / itemHeight * 100,
+    positionX: contentWidth === itemWidth ? 0 : (item.left - content.left) / (contentWidth - itemWidth) * 100,
+    positionY: contentHeight === itemHeight ? 0 : (item.top - content.top) / (contentHeight - itemHeight) * 100
+  };
+}
+
 export function windowViewZIndex(node) {
   const depth = Math.max(0, Math.trunc(Number(node?.depth) || 0));
   const drawingOrder = Math.max(0, Math.min(99, Math.trunc(Number(node?.drawingOrder) || 0)));

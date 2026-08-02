@@ -140,12 +140,13 @@ select, input[type="search"] { height: 30px; padding: 0 9px; min-width: 0; }
 .scene { position: relative; width: 72%; height: 72%; margin: 7% auto 0; transform-style: preserve-3d; transform: rotateX(58deg) rotateZ(-27deg) scale(.9); transition: transform .16s ease-out; }
 .layer-plane {
   position: absolute; display: block; transform-style: preserve-3d; overflow: hidden;
-  border: 1px solid rgba(34, 104, 149, .72); background: rgba(232, 244, 251, .76);
+  border: 1px solid rgba(34, 104, 149, .72); background-color: rgba(232, 244, 251, .76);
   box-shadow: 0 8px 18px rgba(26, 54, 72, .12); color: #244f69; cursor: pointer;
   transition: background .12s, border-color .12s;
 }
-.layer-plane.window-plane { background: rgba(221, 236, 244, .84); }
-.layer-plane:hover, .layer-plane.selected { border: 2px solid #df5e35; background: rgba(250, 230, 215, .88); }
+.layer-plane.window-plane { background-color: rgba(221, 236, 244, .84); }
+.layer-plane.has-screenshot { background-color: transparent; }
+.layer-plane:hover, .layer-plane.selected { border: 2px solid #df5e35; background-color: rgba(250, 230, 215, .32); }
 .layer-plane.finding { box-shadow: inset 0 0 0 2px var(--orange); }
 .window-view-box {
   position: absolute; z-index: 1; min-width: 1px; min-height: 1px; padding: 0;

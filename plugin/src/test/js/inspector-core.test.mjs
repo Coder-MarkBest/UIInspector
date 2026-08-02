@@ -21,7 +21,8 @@ import {
   rememberOriginalValue,
   rememberPropertyGroupOpen,
   selectNode,
-  shouldAutoCapture
+  shouldAutoCapture,
+  windowViewZIndex
 } from '../../main/resources/web/inspector-core.js';
 
 const groups = [
@@ -68,6 +69,14 @@ test('Window View bounds normalize against the containing Window', () => {
     height: 50
   });
   assert.equal(relativeBounds(rect(0, 0, 10, 10), rect(0, 0, 0, 10)), null);
+});
+
+test('3D Window View stacking keeps descendants above selected ancestors', () => {
+  const rootZ = windowViewZIndex({ depth: 0, drawingOrder: 0 });
+  const childZ = windowViewZIndex({ depth: 1, drawingOrder: 0 });
+  const laterSiblingZ = windowViewZIndex({ depth: 1, drawingOrder: 4 });
+  assert.ok(childZ > rootZ);
+  assert.ok(laterSiblingZ > childZ);
 });
 
 test('View depth contains only nodes from the selected Window', () => {

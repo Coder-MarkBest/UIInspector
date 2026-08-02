@@ -20,7 +20,8 @@ import {
   rememberOriginalValue,
   rememberPropertyGroupOpen,
   selectNode,
-  shouldAutoCapture
+  shouldAutoCapture,
+  windowViewZIndex
 } from './inspector-core.js';
 
 const token = new URLSearchParams(location.search).get('token') ?? '';
@@ -394,6 +395,7 @@ function appendWindowViews(plane, window, findingIds) {
     box.style.top = `${geometry.top}%`;
     box.style.width = `${Math.max(.5, geometry.width)}%`;
     box.style.height = `${Math.max(.5, geometry.height)}%`;
+    box.style.zIndex = String(windowViewZIndex(node));
     box.addEventListener('click', event => {
       event.stopPropagation();
       selectNodeId(node.id, true);

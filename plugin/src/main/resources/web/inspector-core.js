@@ -93,6 +93,12 @@ export function relativeBounds(bounds, containerBounds) {
   };
 }
 
+export function windowViewZIndex(node) {
+  const depth = Math.max(0, Math.trunc(Number(node?.depth) || 0));
+  const drawingOrder = Math.max(0, Math.min(99, Math.trunc(Number(node?.drawingOrder) || 0)));
+  return 1 + depth * 100 + drawingOrder;
+}
+
 export function pickNodeAt(snapshot, displayId, x, y) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   const windows = new Map((snapshot?.windows ?? [])

@@ -25,6 +25,7 @@ class ProcessCatalogTest {
                     u0_a12 411 1 1 1 0 0 S com.example.current
                     u0_a13 512 1 1 1 0 0 S com.example.debug
                     u0_a14 513 1 1 1 0 0 S com.example.release
+                    u0_i9001 514 1 1 1 0 0 S com.example.debug:sandbox
                     """ : """
                     Packages:
                       Package [com.example.current] (abc):

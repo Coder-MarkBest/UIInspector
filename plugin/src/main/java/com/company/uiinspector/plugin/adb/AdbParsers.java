@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 public final class AdbParsers {
     private static final Pattern PACKAGE_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+");
     private static final Pattern PACKAGE_HEADER = Pattern.compile("^\\s*Package \\[([^]]+)]");
+    private static final Pattern ISOLATED_USER = Pattern.compile("u\\d+_i\\d+");
 
     private AdbParsers() {}
 
@@ -92,6 +93,7 @@ public final class AdbParsers {
     public static boolean isApplicationProcess(RunningProcess process) {
         String name = process.processName();
         String base = name.contains(":") ? name.substring(0, name.indexOf(':')) : name;
-        return PACKAGE_NAME.matcher(base).matches();
+        return PACKAGE_NAME.matcher(base).matches()
+                && !ISOLATED_USER.matcher(process.user()).matches();
     }
 }

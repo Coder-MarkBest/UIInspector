@@ -179,6 +179,26 @@ test('accessibility audit falls back to raw Android importance values', () => {
   assert.deepEqual(audit.disabled.map(result => result.nodeId), ['child', 'cluster-root']);
 });
 
+test('accessibility audit does not require a name for a focusable scroll container', () => {
+  const input = snapshot();
+  input.nodes = {
+    scroll: {
+      ...node('scroll', 'activity', null, [], 0, rect(0, 0, 300, 300)),
+      className: 'android.widget.ScrollView',
+      propertyGroups: [propertyGroup({
+        importantForAccessibilityResolved: 'true',
+        focusable: 'true',
+        visibleToUser: 'true'
+      })]
+    }
+  };
+
+  const audit = auditAccessibility(input);
+
+  assert.deepEqual(audit.enabled.map(result => result.nodeId), ['scroll']);
+  assert.deepEqual(audit.issues, []);
+});
+
 test('editor model maps protocol types to safe controls', () => {
   assert.deepEqual(propertyEditorModel({
     value: 'true', editor: { valueType: 'BOOLEAN', choices: [] }

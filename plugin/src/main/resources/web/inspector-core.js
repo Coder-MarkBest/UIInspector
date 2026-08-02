@@ -223,7 +223,7 @@ export function auditAccessibility(snapshot) {
       missingProperties: []
     };
     audit[important ? 'enabled' : 'disabled'].push(result);
-    if (!important || !interactiveForAccessibility(properties) || accessibleName(node, properties)) continue;
+    if (!important || !requiresAccessibleName(node, properties) || accessibleName(node, properties)) continue;
     audit.issues.push({
       nodeId: node.id,
       status: 'issue',
@@ -264,6 +264,13 @@ function visibleForAccessibility(properties) {
 function interactiveForAccessibility(properties) {
   return ['clickable', 'longClickable', 'checkable', 'editable', 'screenReaderFocusable', 'focusable']
     .some(name => boolean(properties[name]) === true);
+}
+
+function requiresAccessibleName(node, properties) {
+  if (['clickable', 'longClickable', 'checkable', 'editable', 'screenReaderFocusable']
+    .some(name => boolean(properties[name]) === true)) return true;
+  if (boolean(properties.focusable) !== true) return false;
+  return /(Button|EditText|CheckBox|Switch|RadioButton|Spinner|SeekBar)$/.test(String(node?.className ?? ''));
 }
 
 function accessibleName(node, properties) {

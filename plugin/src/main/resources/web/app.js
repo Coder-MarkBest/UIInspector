@@ -7,6 +7,9 @@ import {
   flattenProperties,
   groupProperties,
   mutationKey,
+  outsideViewport,
+  pickNodeAt,
+  previewPoint,
   propertyEditorModel,
   rememberOriginalValue,
   selectNode
@@ -58,6 +61,19 @@ function bind() {
   elements['process-select'].addEventListener('change', clearMutationState);
   elements['capture-button'].addEventListener('click', capture);
   elements['tree-search'].addEventListener('input', renderTree);
+  elements['screen-frame'].addEventListener('click', event => {
+    if (!state.snapshot || state.stage !== '2d') return;
+    const windows = buildWindowLayers(state.snapshot, state.displayId);
+    const bounds = unionBounds(windows.map(window => window.bounds));
+    const point = previewPoint(
+      elements['screen-frame'].getBoundingClientRect(),
+      bounds,
+      event.clientX,
+      event.clientY
+    );
+    const node = point && pickNodeAt(state.snapshot, state.displayId, point.x, point.y);
+    if (node) selectNodeId(node.id, true);
+  });
   elements['display-select'].addEventListener('change', event => {
     state.displayId = Number(event.target.value);
     chooseDefaultSelection();
@@ -213,6 +229,7 @@ function appendNode(container, id, indent, search, visited) {
   const label = node.className?.split('.').at(-1) ?? node.id;
   const detail = node.resourceId?.split('/').at(-1) ?? node.text ?? '';
   const row = treeRow(`${label}${detail ? ` · ${detail}` : ''}`, `D${node.depth}`, state.selectedNodeId === id, indent, false);
+  row.dataset.nodeId = id;
   row.addEventListener('click', () => selectNodeId(id));
   container.append(row);
   for (const child of node.childIds ?? []) appendNode(container, child, indent + 1, search, visited);
@@ -280,14 +297,14 @@ function render2d() {
   for (const node of Object.values(state.snapshot.nodes ?? {})) {
     const window = state.snapshot.windows.find(value => value.id === node.windowId);
     if (!window || window.displayId !== state.displayId || !node.bounds) continue;
-    const box = el('button', `node-box${node.id === state.selectedNodeId ? ' selected' : ''}${findingIds.has(node.id) ? ' finding' : ''}`);
-    box.type = 'button';
+    const box = el('div', `node-box${node.id === state.selectedNodeId ? ' selected' : ''}${findingIds.has(node.id) ? ' finding' : ''}`);
+    box.setAttribute('aria-hidden', 'true');
+    box.dataset.nodeId = node.id;
     box.title = node.className ?? node.id;
     box.style.left = `${(node.bounds.left - bounds.left) * ratio}px`;
     box.style.top = `${(node.bounds.top - bounds.top) * ratio}px`;
     box.style.width = `${Math.max(2, (node.bounds.right - node.bounds.left) * ratio)}px`;
     box.style.height = `${Math.max(2, (node.bounds.bottom - node.bounds.top) * ratio)}px`;
-    box.addEventListener('click', event => { event.stopPropagation(); selectNodeId(node.id); });
     elements['overlay-layer'].append(box);
   }
 }
@@ -579,11 +596,21 @@ function selectWindow(id) {
   render();
 }
 
-function selectNodeId(id) {
+function selectNodeId(id, revealTree = false) {
   const node = state.snapshot.nodes[id];
   if (!node) return;
+  state.expanded.add(node.windowId);
   state = { ...state, ...selectNode(state, id), selectedWindowId: node.windowId };
   render();
+  if (revealTree) revealTreeNode(id);
+}
+
+function revealTreeNode(id) {
+  const row = [...elements.tree.querySelectorAll('[data-node-id]')]
+    .find(value => value.dataset.nodeId === id);
+  if (row && outsideViewport(row.getBoundingClientRect(), elements.tree.getBoundingClientRect())) {
+    row.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 function selectedTarget() {

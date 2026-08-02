@@ -80,6 +80,12 @@ export function pickNodeAt(snapshot, displayId, x, y) {
     .at(0)?.node ?? null;
 }
 
+export function outsideViewport(item, container) {
+  if (!item || !container) return false;
+  return item.top < container.top || item.bottom > container.bottom
+    || item.left < container.left || item.right > container.right;
+}
+
 export function groupProperties(target) {
   const source = new Map((target?.propertyGroups ?? []).map(group => [group.name, group.properties ?? {}]));
   return PROPERTY_GROUP_ORDER.map(name => ({ name, properties: source.get(name) ?? {} }));

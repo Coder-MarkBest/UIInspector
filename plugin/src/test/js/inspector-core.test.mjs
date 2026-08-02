@@ -11,10 +11,12 @@ import {
   mutationKey,
   outsideViewport,
   pickNodeAt,
+  preferredProjectProcess,
   previewPoint,
   propertyEditorModel,
   rememberOriginalValue,
-  selectNode
+  selectNode,
+  shouldAutoCapture
 } from '../../main/resources/web/inspector-core.js';
 
 const groups = [
@@ -157,6 +159,25 @@ test('3D drag follows horizontal pointer direction and preserves vertical clamps
   assert.deepEqual(dragRotation(58, -27, 40, 20), { rotationX: 53, rotationZ: -37 });
   assert.deepEqual(dragRotation(20, -27, 0, 100), { rotationX: 18, rotationZ: -27 });
   assert.deepEqual(dragRotation(75, -27, 0, -100), { rotationX: 78, rotationZ: -27 });
+});
+
+test('preferred project process selects the main process before secondary processes', () => {
+  const processes = [
+    { pid: 12, packageName: 'com.example.app', processName: 'com.example.app:worker', debuggable: true },
+    { pid: 11, packageName: 'com.example.app', processName: 'com.example.app', debuggable: true },
+    { pid: 20, packageName: 'com.other', processName: 'com.other', debuggable: true }
+  ];
+
+  assert.equal(preferredProjectProcess(processes, ['com.example.app'])?.pid, 11);
+  assert.equal(preferredProjectProcess([processes[0], processes[2]], ['com.example.app'])?.pid, 12);
+  assert.equal(preferredProjectProcess([processes[2]], ['com.example.app']), null);
+});
+
+test('automatic capture runs only once when a project process is available', () => {
+  const process = { pid: 11, packageName: 'com.example.app', processName: 'com.example.app' };
+  assert.equal(shouldAutoCapture({ attempted: false, process }), true);
+  assert.equal(shouldAutoCapture({ attempted: true, process }), false);
+  assert.equal(shouldAutoCapture({ attempted: false, process: null }), false);
 });
 
 function rect(left, top, right, bottom) { return { left, top, right, bottom }; }

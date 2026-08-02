@@ -80,6 +80,15 @@ public final class AdbParsers {
         return Set.copyOf(packages);
     }
 
+    public static Set<String> installedPackages(String output) {
+        Set<String> packages = new LinkedHashSet<>();
+        for (String raw : output.split("\\R")) {
+            var header = PACKAGE_HEADER.matcher(raw);
+            if (header.find()) packages.add(header.group(1));
+        }
+        return Set.copyOf(packages);
+    }
+
     public static boolean isApplicationProcess(RunningProcess process) {
         String name = process.processName();
         String base = name.contains(":") ? name.substring(0, name.indexOf(':')) : name;

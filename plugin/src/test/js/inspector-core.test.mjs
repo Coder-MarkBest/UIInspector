@@ -125,7 +125,30 @@ test('property groups retain Android order and selection is synchronized', () =>
   target.propertyGroups = [{ name: 'content', properties: { text: { value: 'Home', source: 'JVMTI' } } }];
   assert.deepEqual(groupProperties(target).map(value => value.name), groups);
   assert.equal(groupProperties(target)[4].properties.text.value, 'Home');
-  assert.deepEqual(selectNode({ selectedNodeId: null }, 'child'), { selectedNodeId: 'child' });
+});
+
+test('View selection updates node, Window, expansion, and incompatible editing together', () => {
+  const input = snapshot();
+  const current = {
+    selectedNodeId: 'root',
+    selectedWindowId: 'activity',
+    expanded: new Set(['activity']),
+    editingProperty: { id: 'root\u0000alpha' }
+  };
+  const result = selectNode(input, current, 'dialog-root');
+  assert.equal(result.selectedNodeId, 'dialog-root');
+  assert.equal(result.selectedWindowId, 'dialog');
+  assert.deepEqual([...result.expanded], ['activity', 'dialog']);
+  assert.equal(result.editingProperty, null);
+  assert.equal(selectNode(input, current, 'missing'), null);
+});
+
+test('reselecting the same View preserves its active property editor', () => {
+  const input = snapshot();
+  const editor = { id: 'child\u0000alpha' };
+  assert.equal(selectNode(input, {
+    selectedNodeId: 'child', selectedWindowId: 'activity', expanded: new Set(), editingProperty: editor
+  }, 'child').editingProperty, editor);
 });
 
 test('property group state preserves lower groups and explicit default closures', () => {

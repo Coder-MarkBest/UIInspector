@@ -360,6 +360,7 @@ function render3d(items) {
       plane.setAttribute('role', 'button');
     } else {
       plane.type = 'button';
+      plane.dataset.nodeId = item.id;
     }
     const itemBounds = item.bounds ?? bounds;
     const slice = screenshotSlice(itemBounds, bounds, state.snapshot.screenshot?.dataUrl);
@@ -720,18 +721,22 @@ function renderStatus() {
 }
 
 function selectWindow(id) {
+  const window = state.snapshot.windows.find(value => value.id === id);
+  if (!window) return;
+  if (state.threeMode === 'views' && window.rootNodeId) {
+    selectNodeId(window.rootNodeId);
+    return;
+  }
   state.selectedWindowId = id;
   state.selectedNodeId = null;
-  const window = state.snapshot.windows.find(value => value.id === id);
-  if (state.threeMode === 'views' && window?.rootNodeId) state.selectedNodeId = window.rootNodeId;
+  state.editingProperty = null;
   render();
 }
 
 function selectNodeId(id, revealTree = false) {
-  const node = state.snapshot.nodes[id];
-  if (!node) return;
-  state.expanded.add(node.windowId);
-  state = { ...state, ...selectNode(state, id), selectedWindowId: node.windowId };
+  const selection = selectNode(state.snapshot, state, id);
+  if (!selection) return;
+  state = { ...state, ...selection };
   render();
   if (revealTree) revealTreeNode(id);
 }

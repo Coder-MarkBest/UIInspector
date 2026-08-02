@@ -182,8 +182,17 @@ export function rememberPropertyGroupOpen(groupState, targetId, groupName, open)
   return groupState;
 }
 
-export function selectNode(state, nodeId) {
-  return { ...state, selectedNodeId: nodeId };
+export function selectNode(snapshot, state, nodeId) {
+  const node = snapshot?.nodes?.[nodeId];
+  if (!node) return null;
+  const expanded = new Set(state?.expanded ?? []);
+  expanded.add(node.windowId);
+  return {
+    selectedNodeId: node.id,
+    selectedWindowId: node.windowId,
+    expanded,
+    editingProperty: state?.selectedNodeId === node.id ? state.editingProperty ?? null : null
+  };
 }
 
 export function propertyEditorModel(property) {

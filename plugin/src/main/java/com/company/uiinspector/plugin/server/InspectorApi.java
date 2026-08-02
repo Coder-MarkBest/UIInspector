@@ -44,6 +44,7 @@ public final class InspectorApi implements InspectorServer.Api {
     private final ScreenshotCapture screenshots;
     private final AgentDeployer agents;
     private final String defaultPackage;
+    private final List<String> projectPackages;
     private final AtomicReference<InspectionSnapshot> current = new AtomicReference<>();
     private final AtomicReference<String> status = new AtomicReference<>("idle");
 
@@ -52,6 +53,16 @@ public final class InspectorApi implements InspectorServer.Api {
             CollectorManager collector,
             AgentDeployer agents,
             String defaultPackage) {
+        this(adb, collector, agents,
+                defaultPackage == null || defaultPackage.isBlank()
+                        ? List.of() : List.of(defaultPackage));
+    }
+
+    public InspectorApi(
+            AdbClient adb,
+            CollectorManager collector,
+            AgentDeployer agents,
+            List<String> projectPackages) {
         this.adb = adb;
         this.devices = new DeviceCatalog(adb);
         this.processes = new ProcessCatalog(adb);
@@ -59,7 +70,8 @@ public final class InspectorApi implements InspectorServer.Api {
         this.semantic = new SemanticCapture(adb);
         this.screenshots = new ScreenshotCapture(adb);
         this.agents = agents;
-        this.defaultPackage = defaultPackage;
+        this.projectPackages = projectPackages == null ? List.of() : List.copyOf(projectPackages);
+        this.defaultPackage = this.projectPackages.isEmpty() ? null : this.projectPackages.get(0);
     }
 
     InspectorApi(
@@ -78,6 +90,7 @@ public final class InspectorApi implements InspectorServer.Api {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", status.get());
         response.put("defaultPackage", defaultPackage);
+        response.put("projectPackages", projectPackages);
         response.put("snapshot", current.get());
         return GSON.toJson(response);
     }

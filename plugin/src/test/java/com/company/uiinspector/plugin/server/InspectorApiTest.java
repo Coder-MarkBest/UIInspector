@@ -36,6 +36,24 @@ import org.junit.jupiter.api.Test;
 
 class InspectorApiTest {
     @Test
+    void sessionExposesAllProjectApplicationPackagesInDetectionOrder() {
+        var api = new InspectorApi(
+                (arguments, timeout) -> new CommandResult(0, "", "", new byte[0]),
+                null,
+                null,
+                List.of("com.example.first", "com.example.second"));
+
+        var session = JsonParser.parseString(api.session()).getAsJsonObject();
+
+        assertEquals("com.example.first", session.get("defaultPackage").getAsString());
+        assertEquals(
+                List.of("com.example.first", "com.example.second"),
+                session.getAsJsonArray("projectPackages").asList().stream()
+                        .map(value -> value.getAsString())
+                        .toList());
+    }
+
+    @Test
     void devicesExposeWhetherEachAdbStateIsReadyForCapture() {
         AdbClient adb = new AdbClient() {
             @Override
@@ -48,7 +66,7 @@ class InspectorApiTest {
                 return new CommandResult(0, output, "", output.getBytes());
             }
         };
-        var api = new InspectorApi(adb, null, null, null);
+        var api = new InspectorApi(adb, null, null, List.of());
 
         var devices = JsonParser.parseString(api.devices()).getAsJsonArray();
 

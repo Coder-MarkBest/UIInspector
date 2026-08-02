@@ -9,6 +9,7 @@ import {
   filterDepth,
   flattenProperties,
   groupProperties,
+  isDragGesture,
   mutationKey,
   outsideViewport,
   pickNodeAt,
@@ -758,13 +759,38 @@ function selectedTarget() {
 
 function bindSceneControls() {
   let drag = null;
-  elements['three-d-stage'].addEventListener('pointerdown', event => {
-    drag = { x: event.clientX, y: event.clientY, rx: state.rotationX, rz: state.rotationZ };
-    elements['three-d-stage'].setPointerCapture(event.pointerId);
-    elements['three-d-stage'].classList.add('dragging');
+  const stage = elements['three-d-stage'];
+  const clearDrag = () => {
+    drag = null;
+    stage.classList.remove('dragging');
+  };
+  const suppressGeneratedClick = () => {
+    const suppress = event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    stage.addEventListener('click', suppress, { capture: true, once: true });
+    setTimeout(() => stage.removeEventListener('click', suppress, true), 0);
+  };
+
+  stage.addEventListener('pointerdown', event => {
+    drag = {
+      x: event.clientX,
+      y: event.clientY,
+      rx: state.rotationX,
+      rz: state.rotationZ,
+      pointerId: event.pointerId,
+      active: false
+    };
   });
-  elements['three-d-stage'].addEventListener('pointermove', event => {
-    if (!drag) return;
+  stage.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag.active) {
+      if (!isDragGesture(drag.x, drag.y, event.clientX, event.clientY)) return;
+      drag.active = true;
+      stage.setPointerCapture(event.pointerId);
+      stage.classList.add('dragging');
+    }
     const rotation = dragRotation(
       drag.rx,
       drag.rz,
@@ -775,11 +801,14 @@ function bindSceneControls() {
     state.rotationZ = rotation.rotationZ;
     updateSceneTransform();
   });
-  elements['three-d-stage'].addEventListener('pointerup', () => {
-    drag = null;
-    elements['three-d-stage'].classList.remove('dragging');
+  stage.addEventListener('pointerup', event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (drag.active) suppressGeneratedClick();
+    clearDrag();
   });
-  elements['three-d-stage'].addEventListener('wheel', event => {
+  stage.addEventListener('pointercancel', clearDrag);
+  stage.addEventListener('lostpointercapture', clearDrag);
+  stage.addEventListener('wheel', event => {
     event.preventDefault();
     state.scale = Math.max(.45, Math.min(1.45, state.scale - Math.sign(event.deltaY) * .06));
     updateSceneTransform();

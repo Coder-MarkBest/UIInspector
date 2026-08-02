@@ -153,6 +153,10 @@ export function dragRotation(rotationX, rotationZ, deltaX, deltaY) {
   };
 }
 
+export function isDragGesture(startX, startY, currentX, currentY, threshold = 5) {
+  return Math.hypot(Number(currentX) - Number(startX), Number(currentY) - Number(startY)) > threshold;
+}
+
 export function preferredProjectProcess(processes, projectPackages) {
   const packages = new Set(projectPackages ?? []);
   const matches = (processes ?? []).filter(process => packages.has(process.packageName));

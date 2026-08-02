@@ -10,6 +10,7 @@ import {
   evaluateRules,
   filterDepth,
   groupProperties,
+  isDragGesture,
   mutationKey,
   outsideViewport,
   pickNodeAt,
@@ -333,6 +334,12 @@ test('3D drag follows horizontal pointer direction and preserves vertical clamps
   assert.deepEqual(dragRotation(58, -27, 40, 20), { rotationX: 53, rotationZ: -37 });
   assert.deepEqual(dragRotation(20, -27, 0, 100), { rotationX: 18, rotationZ: -27 });
   assert.deepEqual(dragRotation(75, -27, 0, -100), { rotationX: 78, rotationZ: -27 });
+});
+
+test('3D pointer movement becomes a drag only after five CSS pixels', () => {
+  assert.equal(isDragGesture(10, 10, 13, 14), false);
+  assert.equal(isDragGesture(10, 10, 16, 10), true);
+  assert.equal(isDragGesture(10, 10, 10, 4), true);
 });
 
 test('preferred project process selects the main process before secondary processes', () => {

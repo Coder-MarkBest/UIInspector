@@ -8,6 +8,8 @@ import {
   filterDepth,
   groupProperties,
   mutationKey,
+  pickNodeAt,
+  previewPoint,
   propertyEditorModel,
   rememberOriginalValue,
   selectNode
@@ -103,7 +105,50 @@ test('restore history keeps the first value per process node and property', () =
   assert.equal(history.get(key), '1.0');
 });
 
+test('preview coordinates map rendered pixels back to device coordinates', () => {
+  assert.deepEqual(
+    previewPoint(rect(100, 50, 500, 250), rect(0, 0, 800, 400), 300, 150),
+    { x: 400, y: 200 }
+  );
+  assert.equal(previewPoint(rect(100, 50, 100, 250), rect(0, 0, 800, 400), 100, 100), null);
+});
+
+test('2D hit testing selects the deepest node in the highest Window', () => {
+  const input = snapshot();
+  input.nodes.child.bounds = rect(10, 10, 300, 300);
+  input.nodes.child.visibleBounds = rect(10, 10, 200, 200);
+  input.nodes.child.drawingOrder = 1;
+  input.nodes['dialog-root'].bounds = rect(20, 20, 180, 140);
+  input.nodes['dialog-root'].visibleBounds = rect(20, 20, 180, 140);
+  input.nodes['dialog-root'].drawingOrder = 0;
+
+  assert.equal(pickNodeAt(input, 0, 50, 50)?.id, 'dialog-root');
+  assert.equal(pickNodeAt(input, 0, 190, 190)?.id, 'child');
+  assert.equal(pickNodeAt(input, 0, 250, 250)?.id, 'root');
+  assert.equal(pickNodeAt(input, 0, 900, 700), null);
+});
+
+test('2D hit testing resolves same-Window ties deterministically', () => {
+  const input = snapshot();
+  input.windows = [input.windows.find(value => value.id === 'activity')];
+  input.nodes.root.bounds = rect(0, 0, 400, 400);
+  input.nodes.root.visibleBounds = input.nodes.root.bounds;
+  input.nodes.root.drawingOrder = 0;
+  input.nodes.child.bounds = rect(0, 0, 200, 200);
+  input.nodes.child.visibleBounds = input.nodes.child.bounds;
+  input.nodes.child.drawingOrder = 2;
+  input.nodes.sibling = node('sibling', 'activity', 'root', [], 1, rect(0, 0, 160, 160), 3);
+
+  assert.equal(pickNodeAt(input, 0, 100, 100)?.id, 'sibling');
+  input.nodes.sibling.drawingOrder = 2;
+  assert.equal(pickNodeAt(input, 0, 100, 100)?.id, 'sibling');
+});
+
 function rect(left, top, right, bottom) { return { left, top, right, bottom }; }
-function node(id, windowId, parentId, childIds, depth, bounds) {
-  return { id, windowId, parentId, childIds, depth, bounds, className: 'android.view.View', propertyGroups: [] };
+function node(id, windowId, parentId, childIds, depth, bounds, drawingOrder = 0) {
+  return {
+    id, windowId, parentId, childIds, depth, bounds,
+    visibleBounds: bounds, drawingOrder,
+    className: 'android.view.View', propertyGroups: []
+  };
 }

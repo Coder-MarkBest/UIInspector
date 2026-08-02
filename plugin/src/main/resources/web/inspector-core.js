@@ -51,6 +51,35 @@ export function depthControl(items, selectedDepth) {
   };
 }
 
+export function previewPoint(frameRect, deviceBounds, clientX, clientY) {
+  const frameWidth = Number(frameRect?.right) - Number(frameRect?.left);
+  const frameHeight = Number(frameRect?.bottom) - Number(frameRect?.top);
+  const deviceWidth = Number(deviceBounds?.right) - Number(deviceBounds?.left);
+  const deviceHeight = Number(deviceBounds?.bottom) - Number(deviceBounds?.top);
+  if (![frameWidth, frameHeight, deviceWidth, deviceHeight, clientX, clientY].every(Number.isFinite)
+      || frameWidth <= 0 || frameHeight <= 0 || deviceWidth <= 0 || deviceHeight <= 0) return null;
+  return {
+    x: Number(deviceBounds.left) + ((clientX - Number(frameRect.left)) / frameWidth) * deviceWidth,
+    y: Number(deviceBounds.top) + ((clientY - Number(frameRect.top)) / frameHeight) * deviceHeight
+  };
+}
+
+export function pickNodeAt(snapshot, displayId, x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const windows = new Map((snapshot?.windows ?? [])
+    .filter(window => window.displayId === displayId)
+    .map(window => [window.id, window]));
+  return Object.values(snapshot?.nodes ?? {})
+    .map(node => ({
+      node,
+      window: windows.get(node.windowId),
+      hit: positiveRect(node.visibleBounds) ?? positiveRect(node.bounds)
+    }))
+    .filter(value => value.window && value.hit && containsPoint(value.hit, x, y))
+    .sort(compareHitCandidates)
+    .at(0)?.node ?? null;
+}
+
 export function groupProperties(target) {
   const source = new Map((target?.propertyGroups ?? []).map(group => [group.name, group.properties ?? {}]));
   return PROPERTY_GROUP_ORDER.map(name => ({ name, properties: source.get(name) ?? {} }));
@@ -139,4 +168,28 @@ function area(bounds) {
 function number(value) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareHitCandidates(left, right) {
+  return right.window.layer - left.window.layer
+    || right.node.depth - left.node.depth
+    || Number(right.node.drawingOrder ?? Number.MIN_SAFE_INTEGER)
+      - Number(left.node.drawingOrder ?? Number.MIN_SAFE_INTEGER)
+    || rectArea(left.hit) - rectArea(right.hit)
+    || left.node.id.localeCompare(right.node.id);
+}
+
+function positiveRect(value) {
+  if (!value) return null;
+  const numbers = [value.left, value.top, value.right, value.bottom].map(Number);
+  if (!numbers.every(Number.isFinite) || numbers[2] <= numbers[0] || numbers[3] <= numbers[1]) return null;
+  return { left: numbers[0], top: numbers[1], right: numbers[2], bottom: numbers[3] };
+}
+
+function containsPoint(bounds, x, y) {
+  return x >= bounds.left && x < bounds.right && y >= bounds.top && y < bounds.bottom;
+}
+
+function rectArea(bounds) {
+  return (bounds.right - bounds.left) * (bounds.bottom - bounds.top);
 }

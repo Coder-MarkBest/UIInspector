@@ -2,6 +2,7 @@ import {
   buildViewDepths,
   buildWindowLayers,
   depthControl,
+  dragRotation,
   evaluateRules,
   filterDepth,
   flattenProperties,
@@ -629,8 +630,14 @@ function bindSceneControls() {
   });
   elements['three-d-stage'].addEventListener('pointermove', event => {
     if (!drag) return;
-    state.rotationX = Math.max(18, Math.min(78, drag.rx - (event.clientY - drag.y) * .25));
-    state.rotationZ = drag.rz + (event.clientX - drag.x) * .25;
+    const rotation = dragRotation(
+      drag.rx,
+      drag.rz,
+      event.clientX - drag.x,
+      event.clientY - drag.y
+    );
+    state.rotationX = rotation.rotationX;
+    state.rotationZ = rotation.rotationZ;
     updateSceneTransform();
   });
   elements['three-d-stage'].addEventListener('pointerup', () => {

@@ -4,6 +4,7 @@ import {
   buildViewDepths,
   buildWindowLayers,
   depthControl,
+  dragRotation,
   evaluateRules,
   filterDepth,
   groupProperties,
@@ -150,6 +151,12 @@ test('tree reveal is requested only when the selected row is outside its viewpor
   assert.equal(outsideViewport(rect(0, 120, 300, 160), viewport), false);
   assert.equal(outsideViewport(rect(0, 80, 300, 120), viewport), true);
   assert.equal(outsideViewport(rect(0, 480, 300, 520), viewport), true);
+});
+
+test('3D drag follows horizontal pointer direction and preserves vertical clamps', () => {
+  assert.deepEqual(dragRotation(58, -27, 40, 20), { rotationX: 53, rotationZ: -37 });
+  assert.deepEqual(dragRotation(20, -27, 0, 100), { rotationX: 18, rotationZ: -27 });
+  assert.deepEqual(dragRotation(75, -27, 0, -100), { rotationX: 78, rotationZ: -27 });
 });
 
 function rect(left, top, right, bottom) { return { left, top, right, bottom }; }

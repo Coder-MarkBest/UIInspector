@@ -16,6 +16,7 @@ import {
   previewPoint,
   propertyEditorModel,
   propertyGroupOpen,
+  propertyPanelScrollTop,
   relativeBounds,
   rememberOriginalValue,
   rememberPropertyGroupOpen,
@@ -54,6 +55,7 @@ let state = {
   mutationBusy: false,
   originalValues: new Map(),
   propertyGroupState: new Map(),
+  renderedPropertyTargetId: null,
   rotationX: 58,
   rotationZ: -27,
   scale: .9
@@ -406,9 +408,16 @@ function appendWindowViews(plane, window, findingIds) {
 
 function renderProperties() {
   const target = selectedTarget();
-  const scrollTop = elements['property-panel'].scrollTop;
+  const targetId = target?.id ?? null;
+  const scrollTop = propertyPanelScrollTop(
+    state.renderedPropertyTargetId,
+    targetId,
+    elements['property-panel'].scrollTop
+  );
+  state.renderedPropertyTargetId = targetId;
   elements.properties.replaceChildren();
   if (!target) {
+    elements['property-panel'].scrollTop = 0;
     elements.properties.append(el('div', 'property-empty', '从左侧树、2D 框或 3D 平面选择一个节点。'));
     return;
   }

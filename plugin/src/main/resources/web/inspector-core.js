@@ -121,6 +121,13 @@ export function outsideViewport(item, container) {
     || item.left < container.left || item.right > container.right;
 }
 
+export function propertyPanelScrollTop(previousTargetId, nextTargetId, currentScrollTop) {
+  const scrollTop = Number(currentScrollTop);
+  return previousTargetId && previousTargetId === nextTargetId && Number.isFinite(scrollTop)
+    ? Math.max(0, scrollTop)
+    : 0;
+}
+
 export function dragRotation(rotationX, rotationZ, deltaX, deltaY) {
   return {
     rotationX: Math.max(18, Math.min(78, rotationX - deltaY * .25)),

@@ -17,6 +17,7 @@ import {
   previewPoint,
   propertyEditorModel,
   propertyGroupOpen,
+  propertyPanelScrollTop,
   relativeBounds,
   rememberOriginalValue,
   rememberPropertyGroupOpen,
@@ -114,6 +115,12 @@ test('property group state preserves lower groups and explicit default closures'
   assert.equal(propertyGroupOpen(openGroups, 'child', 'accessibility'), true);
   assert.equal(propertyGroupOpen(openGroups, 'child', 'identity'), false);
   assert.equal(propertyGroupOpen(openGroups, 'root', 'identity'), true);
+});
+
+test('property panel preserves scroll for the same View and resets for a new selection', () => {
+  assert.equal(propertyPanelScrollTop('child', 'child', 719), 719);
+  assert.equal(propertyPanelScrollTop('child', 'root', 719), 0);
+  assert.equal(propertyPanelScrollTop(null, 'root', 719), 0);
 });
 
 test('anomaly checks are off by default and report layout or image evidence when enabled', () => {

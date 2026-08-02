@@ -32,7 +32,7 @@
 
 - [ ] **Step 1: Write the failing detector test**
 
-Add a test with two `com.android.application` modules and one library module. Assert that `detectAll(project)` returns only the two declared application IDs in sorted path order.
+Add a test with two application modules that use different plugin declaration styles and one library module without an `applicationId`. Assert that `detectAll(project)` returns only the two declared application IDs in sorted path order.
 
 - [ ] **Step 2: Run the detector test and verify RED**
 
@@ -42,7 +42,7 @@ Expected: compilation fails because `detectAll` does not exist.
 
 - [ ] **Step 3: Implement minimal multi-package detection**
 
-Make `detect(Path)` delegate to `detectAll(Path).stream().findFirst()`. For each Gradle file, accept its `applicationId` only when the same file applies `com.android.application`; de-duplicate with encounter order.
+Make `detect(Path)` delegate to `detectAll(Path).stream().findFirst()`. Treat an explicit `applicationId` as the application-module boundary so Version Catalog plugin aliases remain supported; de-duplicate with encounter order.
 
 - [ ] **Step 4: Expose packages through the session**
 

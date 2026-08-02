@@ -9,6 +9,12 @@ export const PROPERTY_GROUP_ORDER = [
   'captureDiagnostics'
 ];
 
+const DEFAULT_OPEN_PROPERTY_GROUPS = new Set([
+  'identity',
+  'geometryLayout',
+  'windowHierarchy'
+]);
+
 export function buildWindowLayers(snapshot, displayId) {
   return (snapshot?.windows ?? [])
     .filter(window => window.displayId === displayId)
@@ -106,6 +112,20 @@ export function shouldAutoCapture({ attempted, process }) {
 export function groupProperties(target) {
   const source = new Map((target?.propertyGroups ?? []).map(group => [group.name, group.properties ?? {}]));
   return PROPERTY_GROUP_ORDER.map(name => ({ name, properties: source.get(name) ?? {} }));
+}
+
+export function propertyGroupKey(targetId, groupName) {
+  return `${String(targetId)}\u0000${String(groupName)}`;
+}
+
+export function propertyGroupOpen(groupState, targetId, groupName) {
+  const key = propertyGroupKey(targetId, groupName);
+  return groupState.has(key) ? groupState.get(key) : DEFAULT_OPEN_PROPERTY_GROUPS.has(groupName);
+}
+
+export function rememberPropertyGroupOpen(groupState, targetId, groupName, open) {
+  groupState.set(propertyGroupKey(targetId, groupName), Boolean(open));
+  return groupState;
 }
 
 export function selectNode(state, nodeId) {

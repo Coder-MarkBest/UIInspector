@@ -14,7 +14,9 @@ import {
   preferredProjectProcess,
   previewPoint,
   propertyEditorModel,
+  propertyGroupOpen,
   rememberOriginalValue,
+  rememberPropertyGroupOpen,
   selectNode,
   shouldAutoCapture
 } from '../../main/resources/web/inspector-core.js';
@@ -69,6 +71,19 @@ test('property groups retain Android order and selection is synchronized', () =>
   assert.deepEqual(groupProperties(target).map(value => value.name), groups);
   assert.equal(groupProperties(target)[4].properties.text.value, 'Home');
   assert.deepEqual(selectNode({ selectedNodeId: null }, 'child'), { selectedNodeId: 'child' });
+});
+
+test('property group state preserves lower groups and explicit default closures', () => {
+  const openGroups = new Map();
+  assert.equal(propertyGroupOpen(openGroups, 'child', 'identity'), true);
+  assert.equal(propertyGroupOpen(openGroups, 'child', 'accessibility'), false);
+
+  rememberPropertyGroupOpen(openGroups, 'child', 'accessibility', true);
+  rememberPropertyGroupOpen(openGroups, 'child', 'identity', false);
+
+  assert.equal(propertyGroupOpen(openGroups, 'child', 'accessibility'), true);
+  assert.equal(propertyGroupOpen(openGroups, 'child', 'identity'), false);
+  assert.equal(propertyGroupOpen(openGroups, 'root', 'identity'), true);
 });
 
 test('anomaly checks are off by default and report layout or image evidence when enabled', () => {

@@ -13,7 +13,9 @@ import {
   preferredProjectProcess,
   previewPoint,
   propertyEditorModel,
+  propertyGroupOpen,
   rememberOriginalValue,
+  rememberPropertyGroupOpen,
   selectNode,
   shouldAutoCapture
 } from './inspector-core.js';
@@ -24,7 +26,7 @@ const elements = Object.fromEntries([
   'tree-search', 'tree', 'tree-count', 'display-select', 'depth-slider', 'depth-label',
   'rules-toggle', 'empty-state', 'two-d-stage', 'three-d-stage', 'screen-frame', 'screenshot',
   'overlay-layer', 'secure-screenshot', 'scene', 'stage-caption', 'fidelity-badge',
-  'selected-title', 'selected-source', 'properties', 'findings', 'finding-count',
+  'property-panel', 'selected-title', 'selected-source', 'properties', 'findings', 'finding-count',
   'finding-list', 'diagnostic-list', 'toast', 'three-mode'
 ].map(id => [id, document.getElementById(id)]));
 
@@ -44,6 +46,7 @@ let state = {
   editingProperty: null,
   mutationBusy: false,
   originalValues: new Map(),
+  propertyGroupState: new Map(),
   rotationX: 58,
   rotationZ: -27,
   scale: .9
@@ -353,6 +356,7 @@ function render3d(items) {
 
 function renderProperties() {
   const target = selectedTarget();
+  const scrollTop = elements['property-panel'].scrollTop;
   elements.properties.replaceChildren();
   if (!target) {
     elements.properties.append(el('div', 'property-empty', '从左侧树、2D 框或 3D 平面选择一个节点。'));
@@ -362,7 +366,10 @@ function renderProperties() {
   elements['selected-source'].textContent = target.source === 'JVMTI' ? 'Real View' : 'Semantic';
   for (const group of groupProperties(target)) {
     const details = el('details', 'property-group');
-    if (['identity', 'geometryLayout', 'windowHierarchy'].includes(group.name)) details.open = true;
+    details.open = propertyGroupOpen(state.propertyGroupState, target.id, group.name);
+    details.addEventListener('toggle', () => {
+      rememberPropertyGroupOpen(state.propertyGroupState, target.id, group.name, details.open);
+    });
     const entries = Object.entries(group.properties);
     const summary = el('summary');
     summary.append(el('strong', '', groupLabel(group.name)), el('span', '', String(entries.length)));
@@ -378,6 +385,7 @@ function renderProperties() {
     details.append(table);
     elements.properties.append(details);
   }
+  elements['property-panel'].scrollTop = scrollTop;
 }
 
 function propertyValue(target, name, property) {

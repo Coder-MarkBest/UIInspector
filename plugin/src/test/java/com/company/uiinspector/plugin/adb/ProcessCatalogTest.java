@@ -19,6 +19,8 @@ class ProcessCatalogTest {
                     system 101 1 1 1 0 0 S surfaceflinger
                     u0_i9000 102 1 1 1 0 0 S webview_zygote
                     root 103 1 1 1 0 0 S android.hardware.graphics.composer@2.1-service
+                    audioserver 104 1 1 1 0 0 S android.hardware.audio.service
+                    mediaex 105 1 1 1 0 0 S media.extractor
                     u0_a12 410 1 1 1 0 0 S com.example.current:worker
                     u0_a12 411 1 1 1 0 0 S com.example.current
                     u0_a13 512 1 1 1 0 0 S com.example.debug

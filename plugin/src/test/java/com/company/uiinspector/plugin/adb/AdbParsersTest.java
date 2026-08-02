@@ -69,5 +69,8 @@ class AdbParsersTest {
         assertEquals(
                 Set.of("com.example.debug", "com.example.other"),
                 AdbParsers.debuggablePackages(output));
+        assertEquals(
+                Set.of("com.example.debug", "com.example.release", "com.example.other"),
+                AdbParsers.installedPackages(output));
     }
 }

@@ -10,6 +10,7 @@ import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -41,6 +42,7 @@ public class ViewCaptureBridgeTest {
         title.setAlpha(0.75f);
         title.setBackground(new ColorDrawable(0xFF123456));
         title.setClickable(true);
+        title.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         title.setScreenReaderFocusable(true);
         FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(200, 60);
         titleParams.leftMargin = 12;
@@ -83,6 +85,7 @@ public class ViewCaptureBridgeTest {
         assertEquals("false", textNode.propertyGroups().get(5).properties().get("contextClickable").value());
         assertFalse(textNode.propertyGroups().get(4).properties().containsKey("contextClickable"));
         assertEquals("true", textNode.propertyGroups().get(6).properties().get("screenReaderFocusable").value());
+        assertEquals("true", property(textNode, "importantForAccessibilityResolved").value());
         var enabled = property(textNode, "enabled");
         assertEquals(EditorValueType.BOOLEAN, enabled.editor().valueType());
         assertEquals("setter:setEnabled", enabled.editor().adapter());

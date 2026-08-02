@@ -78,6 +78,7 @@ final class AndroidAccessibilityAdapters {
         }
         @Override public com.company.uiinspector.protocol.Rect visibleBounds() { return bounds(); }
         @Override public Integer drawingOrder() { return node.getDrawingOrder(); }
+        @Override public boolean importantForAccessibility() { return node.isImportantForAccessibility(); }
         @Override public Map<String, String> properties() {
             Map<String, String> values = new LinkedHashMap<>();
             values.put("enabled", Boolean.toString(node.isEnabled()));

@@ -124,6 +124,7 @@ public final class AccessibilitySnapshotCollector {
         put(properties, "text", node.text());
         put(properties, "contentDescription", node.contentDescription());
         put(properties, "drawingOrder", node.drawingOrder() == null ? null : node.drawingOrder().toString());
+        properties.put("importantForAccessibilityResolved", Boolean.toString(node.importantForAccessibility()));
         properties.putIfAbsent("backend", "Accessibility");
         properties.putIfAbsent("fidelity", "semantic");
 
@@ -234,6 +235,7 @@ public final class AccessibilitySnapshotCollector {
         Rect bounds();
         Rect visibleBounds();
         Integer drawingOrder();
+        boolean importantForAccessibility();
         Map<String, String> properties();
         List<? extends NodeData> children();
     }

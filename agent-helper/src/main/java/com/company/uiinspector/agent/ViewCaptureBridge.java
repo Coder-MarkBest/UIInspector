@@ -232,6 +232,7 @@ public final class ViewCaptureBridge {
         }
 
         values.put("importantForAccessibility", Integer.toString(view.getImportantForAccessibility()));
+        values.put("importantForAccessibilityResolved", Boolean.toString(view.isImportantForAccessibility()));
         put(values, "accessibilityClass", chars(view.getAccessibilityClassName()));
         values.put("accessibilityLiveRegion", Integer.toString(view.getAccessibilityLiveRegion()));
         put(values, "accessibilityPaneTitle", chars(view.getAccessibilityPaneTitle()));

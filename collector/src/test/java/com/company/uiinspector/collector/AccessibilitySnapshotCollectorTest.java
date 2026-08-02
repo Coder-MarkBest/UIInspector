@@ -36,6 +36,7 @@ public class AccessibilitySnapshotCollectorTest {
                 "text", "Hello",
                 "clickable", "true",
                 "contextClickable", "false",
+                "importantForAccessibility", "true",
                 "screenReaderFocusable", "true",
                 "actions", "ACTION_CLICK",
                 "backend", "Accessibility"));
@@ -59,6 +60,7 @@ public class AccessibilitySnapshotCollectorTest {
         assertEquals("Hello", groups.get(4).properties().get("text").value());
         assertEquals("false", groups.get(5).properties().get("contextClickable").value());
         assertEquals("true", groups.get(6).properties().get("screenReaderFocusable").value());
+        assertEquals("true", groups.get(6).properties().get("importantForAccessibilityResolved").value());
     }
 
     @Test
@@ -118,5 +120,8 @@ public class AccessibilitySnapshotCollectorTest {
         @Override public Rect bounds() { return new Rect(0, 0, 80, 40); }
         @Override public Rect visibleBounds() { return bounds(); }
         @Override public Integer drawingOrder() { return null; }
+        @Override public boolean importantForAccessibility() {
+            return Boolean.parseBoolean(properties.getOrDefault("importantForAccessibility", "true"));
+        }
     }
 }

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildViewDepths,
   buildWindowLayers,
+  buildWindowScene,
   depthControl,
   dragRotation,
   evaluateRules,
@@ -15,6 +16,7 @@ import {
   previewPoint,
   propertyEditorModel,
   propertyGroupOpen,
+  relativeBounds,
   rememberOriginalValue,
   rememberPropertyGroupOpen,
   selectNode,
@@ -47,6 +49,24 @@ test('Window layers sort by z without replacing Window parent relationships', ()
   assert.deepEqual(layers.map(value => value.id), ['activity', 'dialog']);
   assert.equal(layers[1].parentWindowId, 'activity');
   assert.deepEqual(layers.map(value => value.layer), [2, 9]);
+});
+
+test('3D Window scene keeps every View flat inside its own Window', () => {
+  const scene = buildWindowScene(snapshot(), 0);
+  assert.deepEqual(scene.map(window => window.id), ['activity', 'dialog']);
+  assert.deepEqual(scene[0].nodes.map(node => node.id), ['root', 'child']);
+  assert.deepEqual(scene[1].nodes.map(node => node.id), ['dialog-root']);
+  assert.equal(scene[0].nodes.some(node => node.id === 'dialog-root'), false);
+});
+
+test('Window View bounds normalize against the containing Window', () => {
+  assert.deepEqual(relativeBounds(rect(10, 20, 210, 120), rect(0, 0, 400, 200)), {
+    left: 2.5,
+    top: 10,
+    width: 50,
+    height: 50
+  });
+  assert.equal(relativeBounds(rect(0, 0, 10, 10), rect(0, 0, 0, 10)), null);
 });
 
 test('View depth contains only nodes from the selected Window', () => {

@@ -1,6 +1,7 @@
 import {
   buildViewDepths,
   buildWindowLayers,
+  buildWindowScene,
   depthControl,
   dragRotation,
   evaluateRules,
@@ -14,6 +15,7 @@ import {
   previewPoint,
   propertyEditorModel,
   propertyGroupOpen,
+  relativeBounds,
   rememberOriginalValue,
   rememberPropertyGroupOpen,
   selectNode,
@@ -278,7 +280,8 @@ function renderStage() {
 }
 
 function stageItems() {
-  if (state.threeMode === 'windows') return buildWindowLayers(state.snapshot, state.displayId).map(window => ({ ...window, depth: window.layer }));
+  if (state.threeMode === 'windows') return buildWindowScene(state.snapshot, state.displayId)
+    .map(window => ({ ...window, depth: window.layer }));
   if (!state.selectedWindowId) return [];
   return buildViewDepths(state.snapshot, state.selectedWindowId);
 }
@@ -336,22 +339,57 @@ function render3d(items) {
   for (const item of filtered) {
     const level = Number(item.depth ?? item.layer);
     const z = levels.indexOf(level) * 34;
-    const plane = el('button', `layer-plane${state.threeMode === 'windows' ? ' window-plane' : ''}`);
-    plane.type = 'button';
+    const windowMode = state.threeMode === 'windows';
+    const plane = el(windowMode ? 'div' : 'button', `layer-plane${windowMode ? ' window-plane' : ''}`);
+    if (windowMode) {
+      plane.tabIndex = 0;
+      plane.setAttribute('role', 'button');
+    } else {
+      plane.type = 'button';
+    }
     const itemBounds = item.bounds ?? bounds;
     plane.style.left = `${((itemBounds.left - bounds.left) / width) * 100}%`;
     plane.style.top = `${((itemBounds.top - bounds.top) / height) * 100}%`;
     plane.style.width = `${Math.max(4, ((itemBounds.right - itemBounds.left) / width) * 100)}%`;
     plane.style.height = `${Math.max(4, ((itemBounds.bottom - itemBounds.top) / height) * 100)}%`;
     plane.style.transform = `translateZ(${z}px)`;
-    const selected = state.threeMode === 'windows' ? item.id === state.selectedWindowId : item.id === state.selectedNodeId;
+    const selected = windowMode
+      ? item.id === state.selectedWindowId && !state.selectedNodeId
+      : item.id === state.selectedNodeId;
     if (selected) plane.classList.add('selected');
     if (findingIds.has(item.id)) plane.classList.add('finding');
-    plane.append(el('span', 'plane-label', state.threeMode === 'windows' ? windowLabel(item) : item.className?.split('.').at(-1) ?? item.id));
-    plane.addEventListener('click', () => state.threeMode === 'windows' ? selectWindow(item.id) : selectNodeId(item.id));
+    if (windowMode) appendWindowViews(plane, item, findingIds);
+    plane.append(el('span', 'plane-label', windowMode ? windowLabel(item) : item.className?.split('.').at(-1) ?? item.id));
+    plane.addEventListener('click', () => windowMode ? selectWindow(item.id) : selectNodeId(item.id));
+    if (windowMode) plane.addEventListener('keydown', event => {
+      if (event.target !== plane || !['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      selectWindow(item.id);
+    });
     elements.scene.append(plane);
   }
   updateSceneTransform();
+}
+
+function appendWindowViews(plane, window, findingIds) {
+  for (const node of window.nodes ?? []) {
+    const geometry = relativeBounds(node.visibleBounds ?? node.bounds, window.bounds);
+    if (!geometry) continue;
+    const box = el('button', `window-view-box${node.id === state.selectedNodeId ? ' selected' : ''}${findingIds.has(node.id) ? ' finding' : ''}`);
+    box.type = 'button';
+    box.dataset.nodeId = node.id;
+    box.title = node.className ?? node.id;
+    box.setAttribute('aria-label', node.className?.split('.').at(-1) ?? node.id);
+    box.style.left = `${geometry.left}%`;
+    box.style.top = `${geometry.top}%`;
+    box.style.width = `${Math.max(.5, geometry.width)}%`;
+    box.style.height = `${Math.max(.5, geometry.height)}%`;
+    box.addEventListener('click', event => {
+      event.stopPropagation();
+      selectNodeId(node.id, true);
+    });
+    plane.append(box);
+  }
 }
 
 function renderProperties() {

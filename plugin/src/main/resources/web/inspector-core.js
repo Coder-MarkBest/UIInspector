@@ -22,6 +22,11 @@ export function buildWindowLayers(snapshot, displayId) {
     .sort((left, right) => left.layer - right.layer || left.id.localeCompare(right.id));
 }
 
+export function buildWindowScene(snapshot, displayId) {
+  return buildWindowLayers(snapshot, displayId)
+    .map(window => ({ ...window, nodes: buildViewDepths(snapshot, window.id) }));
+}
+
 export function buildViewDepths(snapshot, windowId) {
   const nodes = Object.values(snapshot?.nodes ?? {}).filter(node => node.windowId === windowId);
   const order = new Map();
@@ -67,6 +72,24 @@ export function previewPoint(frameRect, deviceBounds, clientX, clientY) {
   return {
     x: Number(deviceBounds.left) + ((clientX - Number(frameRect.left)) / frameWidth) * deviceWidth,
     y: Number(deviceBounds.top) + ((clientY - Number(frameRect.top)) / frameHeight) * deviceHeight
+  };
+}
+
+export function relativeBounds(bounds, containerBounds) {
+  const values = [
+    bounds?.left, bounds?.top, bounds?.right, bounds?.bottom,
+    containerBounds?.left, containerBounds?.top, containerBounds?.right, containerBounds?.bottom
+  ].map(Number);
+  if (!values.every(Number.isFinite)) return null;
+  const [left, top, right, bottom, containerLeft, containerTop, containerRight, containerBottom] = values;
+  const width = containerRight - containerLeft;
+  const height = containerBottom - containerTop;
+  if (width <= 0 || height <= 0 || right <= left || bottom <= top) return null;
+  return {
+    left: ((left - containerLeft) / width) * 100,
+    top: ((top - containerTop) / height) * 100,
+    width: ((right - left) / width) * 100,
+    height: ((bottom - top) / height) * 100
   };
 }
 

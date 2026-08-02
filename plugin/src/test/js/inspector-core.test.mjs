@@ -8,6 +8,7 @@ import {
   filterDepth,
   groupProperties,
   mutationKey,
+  outsideViewport,
   pickNodeAt,
   previewPoint,
   propertyEditorModel,
@@ -142,6 +143,13 @@ test('2D hit testing resolves same-Window ties deterministically', () => {
   assert.equal(pickNodeAt(input, 0, 100, 100)?.id, 'sibling');
   input.nodes.sibling.drawingOrder = 2;
   assert.equal(pickNodeAt(input, 0, 100, 100)?.id, 'sibling');
+});
+
+test('tree reveal is requested only when the selected row is outside its viewport', () => {
+  const viewport = rect(0, 100, 300, 500);
+  assert.equal(outsideViewport(rect(0, 120, 300, 160), viewport), false);
+  assert.equal(outsideViewport(rect(0, 80, 300, 120), viewport), true);
+  assert.equal(outsideViewport(rect(0, 480, 300, 520), viewport), true);
 });
 
 function rect(left, top, right, bottom) { return { left, top, right, bottom }; }

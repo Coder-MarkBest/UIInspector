@@ -210,6 +210,31 @@ export function evaluateRules(snapshot, enabled) {
   return findings;
 }
 
+export function auditAccessibility(snapshot) {
+  const audit = { enabled: [], disabled: [], issues: [] };
+  for (const node of Object.values(snapshot?.nodes ?? {})) {
+    const properties = flattenProperties(node);
+    if (!visibleForAccessibility(properties)) continue;
+    const important = accessibilityImportance(node, properties);
+    const result = {
+      nodeId: node.id,
+      status: important ? 'enabled' : 'disabled',
+      reason: important ? '已加入无障碍树' : '未加入无障碍树',
+      missingProperties: []
+    };
+    audit[important ? 'enabled' : 'disabled'].push(result);
+    if (!important || !interactiveForAccessibility(properties) || accessibleName(node, properties)) continue;
+    audit.issues.push({
+      nodeId: node.id,
+      status: 'issue',
+      ruleId: 'accessibility.missingName',
+      reason: '可交互 View 缺少可读名称',
+      missingProperties: missingNameProperties(node)
+    });
+  }
+  return audit;
+}
+
 export function flattenProperties(target) {
   const values = {};
   for (const group of target?.propertyGroups ?? []) {
@@ -218,6 +243,59 @@ export function flattenProperties(target) {
     }
   }
   return values;
+}
+
+function accessibilityImportance(node, properties) {
+  const resolved = boolean(properties.importantForAccessibilityResolved);
+  if (resolved !== null) return resolved;
+  const raw = String(properties.importantForAccessibility ?? '').trim().toLowerCase();
+  if (raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '2' || raw === '4') return false;
+  return interactiveForAccessibility(properties) || Boolean(accessibleName(node, properties));
+}
+
+function visibleForAccessibility(properties) {
+  const visibleToUser = boolean(properties.visibleToUser);
+  const shown = boolean(properties.shown);
+  const visibility = String(properties.visibility ?? 'VISIBLE').toUpperCase();
+  return visibleToUser !== false && shown !== false && !['INVISIBLE', 'GONE'].includes(visibility);
+}
+
+function interactiveForAccessibility(properties) {
+  return ['clickable', 'longClickable', 'checkable', 'editable', 'screenReaderFocusable', 'focusable']
+    .some(name => boolean(properties[name]) === true);
+}
+
+function accessibleName(node, properties) {
+  return [
+    node?.contentDescription,
+    node?.text,
+    properties.contentDescription,
+    properties.text,
+    properties.hint,
+    properties.paneTitle,
+    properties.accessibilityPaneTitle
+  ].find(value => present(value)) ?? null;
+}
+
+function missingNameProperties(node) {
+  const className = String(node?.className ?? '');
+  if (/Image(View|Button)$/.test(className)) return ['contentDescription'];
+  if (/EditText$/.test(className)) return ['hint', 'contentDescription'];
+  return ['text', 'contentDescription'];
+}
+
+function boolean(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return null;
+}
+
+function present(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized.length > 0 && normalized.toLowerCase() !== 'null';
 }
 
 function outside(inner, outer) {

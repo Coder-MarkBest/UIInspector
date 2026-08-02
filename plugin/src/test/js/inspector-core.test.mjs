@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  auditAccessibility,
   buildViewDepths,
   buildWindowLayers,
   buildWindowScene,
@@ -123,6 +124,61 @@ test('anomaly checks are off by default and report layout or image evidence when
   assert.equal(findings[1].evidence.bitmapByteCount, 67108864);
 });
 
+test('accessibility audit separates enabled, disabled, and missing-name Views', () => {
+  const input = snapshot();
+  delete input.nodes['cluster-root'];
+  input.windows = input.windows.filter(window => window.id !== 'cluster');
+  input.nodes.root.className = 'android.widget.Button';
+  input.nodes.root.text = '保存';
+  input.nodes.root.propertyGroups = [propertyGroup({
+    importantForAccessibilityResolved: 'true',
+    clickable: 'true',
+    visibleToUser: 'true'
+  })];
+  input.nodes.child.className = 'android.view.View';
+  input.nodes.child.propertyGroups = [propertyGroup({
+    importantForAccessibilityResolved: 'false',
+    clickable: 'true',
+    visibleToUser: 'true'
+  })];
+  input.nodes['dialog-root'].className = 'android.widget.ImageButton';
+  input.nodes['dialog-root'].propertyGroups = [propertyGroup({
+    importantForAccessibilityResolved: 'true',
+    clickable: 'true',
+    visibleToUser: 'true'
+  })];
+
+  const audit = auditAccessibility(input);
+
+  assert.deepEqual(audit.enabled.map(result => result.nodeId), ['root', 'dialog-root']);
+  assert.deepEqual(audit.disabled.map(result => result.nodeId), ['child']);
+  assert.deepEqual(audit.issues.map(result => ({
+    nodeId: result.nodeId,
+    ruleId: result.ruleId,
+    missingProperties: result.missingProperties
+  })), [{
+    nodeId: 'dialog-root',
+    ruleId: 'accessibility.missingName',
+    missingProperties: ['contentDescription']
+  }]);
+});
+
+test('accessibility audit falls back to raw Android importance values', () => {
+  const input = snapshot();
+  input.nodes.root.propertyGroups = [propertyGroup({ importantForAccessibility: '1' })];
+  input.nodes.child.propertyGroups = [propertyGroup({ importantForAccessibility: '2' })];
+  input.nodes['dialog-root'].propertyGroups = [propertyGroup({
+    importantForAccessibility: '0',
+    screenReaderFocusable: 'true',
+    contentDescription: '关闭'
+  })];
+
+  const audit = auditAccessibility(input);
+
+  assert.deepEqual(audit.enabled.map(result => result.nodeId), ['root', 'dialog-root']);
+  assert.deepEqual(audit.disabled.map(result => result.nodeId), ['child', 'cluster-root']);
+});
+
 test('editor model maps protocol types to safe controls', () => {
   assert.deepEqual(propertyEditorModel({
     value: 'true', editor: { valueType: 'BOOLEAN', choices: [] }
@@ -221,5 +277,11 @@ function node(id, windowId, parentId, childIds, depth, bounds, drawingOrder = 0)
     id, windowId, parentId, childIds, depth, bounds,
     visibleBounds: bounds, drawingOrder,
     className: 'android.view.View', propertyGroups: []
+  };
+}
+function propertyGroup(properties) {
+  return {
+    name: 'accessibility',
+    properties: Object.fromEntries(Object.entries(properties).map(([name, value]) => [name, { value, source: 'TEST' }]))
   };
 }

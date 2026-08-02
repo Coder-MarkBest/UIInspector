@@ -1,4 +1,5 @@
 import {
+  auditAccessibility,
   buildViewDepths,
   buildWindowLayers,
   buildWindowScene,
@@ -29,7 +30,8 @@ const elements = Object.fromEntries([
   'rules-toggle', 'empty-state', 'two-d-stage', 'three-d-stage', 'screen-frame', 'screenshot',
   'overlay-layer', 'secure-screenshot', 'scene', 'stage-caption', 'fidelity-badge',
   'property-panel', 'selected-title', 'selected-source', 'properties', 'findings', 'finding-count',
-  'finding-list', 'diagnostic-list', 'toast', 'three-mode'
+  'finding-list', 'accessibility-audit', 'accessibility-audit-count', 'accessibility-audit-list',
+  'diagnostic-list', 'toast', 'three-mode'
 ].map(id => [id, document.getElementById(id)]));
 
 let state = {
@@ -45,6 +47,8 @@ let state = {
   selectedNodeId: null,
   expanded: new Set(),
   findings: [],
+  accessibilityAudit: { enabled: [], disabled: [], issues: [] },
+  accessibilityFilter: 'issues',
   editingProperty: null,
   mutationBusy: false,
   originalValues: new Map(),
@@ -97,6 +101,10 @@ function bind() {
     state.findings = evaluateRules(state.snapshot, elements['rules-toggle'].checked);
     render();
   });
+  document.querySelectorAll('[data-accessibility-filter]').forEach(button => button.addEventListener('click', () => {
+    state.accessibilityFilter = button.dataset.accessibilityFilter;
+    renderAccessibilityAudit();
+  }));
   document.querySelectorAll('[data-stage]').forEach(button => button.addEventListener('click', () => {
     state.stage = button.dataset.stage;
     renderToolbar();
@@ -181,6 +189,7 @@ async function capture() {
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
   state.findings = evaluateRules(snapshot, elements['rules-toggle'].checked);
+  updateAccessibilityAudit(snapshot, true);
   const displays = [...new Set((snapshot.windows ?? []).map(window => window.displayId))].sort((a, b) => a - b);
   elements['display-select'].replaceChildren(...(displays.length ? displays : [0]).map(value => option(String(value), String(value))));
   state.displayId = displays[0] ?? 0;
@@ -205,6 +214,7 @@ function render() {
   renderProperties();
   renderDiagnostics();
   renderFindings();
+  renderAccessibilityAudit();
   renderStatus();
 }
 
@@ -588,6 +598,7 @@ function applyMutationSnapshot(snapshot, previousTarget) {
   const identity = targetIdentity(previousTarget);
   state.snapshot = snapshot;
   state.findings = evaluateRules(snapshot, elements['rules-toggle'].checked);
+  updateAccessibilityAudit(snapshot, false);
   const displays = [...new Set((snapshot.windows ?? []).map(window => window.displayId))].sort((a, b) => a - b);
   elements['display-select'].replaceChildren(...(displays.length ? displays : [0]).map(value => option(String(value), String(value))));
   state.displayId = displays.includes(displayId) ? displayId : displays[0] ?? 0;
@@ -627,6 +638,49 @@ function renderFindings() {
     const button = el('button', 'finding-button', `${finding.ruleId} · ${finding.reason}`);
     button.addEventListener('click', () => selectNodeId(finding.nodeId));
     elements['finding-list'].append(button);
+  }
+}
+
+function updateAccessibilityAudit(snapshot, resetFilter) {
+  state.accessibilityAudit = auditAccessibility(snapshot);
+  if (resetFilter) {
+    state.accessibilityFilter = state.accessibilityAudit.issues.length ? 'issues' : 'enabled';
+  }
+}
+
+function renderAccessibilityAudit() {
+  const visible = Boolean(state.snapshot);
+  elements['accessibility-audit'].hidden = !visible;
+  if (!visible) return;
+  const audit = state.accessibilityAudit;
+  elements['accessibility-audit-count'].textContent = String(audit.issues.length);
+  document.querySelectorAll('[data-accessibility-filter]').forEach(button => {
+    const name = button.dataset.accessibilityFilter;
+    const count = audit[name]?.length ?? 0;
+    button.setAttribute('aria-pressed', String(name === state.accessibilityFilter));
+    button.querySelector('span').textContent = String(count);
+  });
+  const results = audit[state.accessibilityFilter] ?? [];
+  elements['accessibility-audit-list'].replaceChildren();
+  if (!results.length) {
+    elements['accessibility-audit-list'].append(el('p', 'audit-empty', '当前分类没有 View。'));
+    return;
+  }
+  for (const result of results) {
+    const node = state.snapshot.nodes?.[result.nodeId];
+    if (!node) continue;
+    const label = node.resourceId?.split('/').at(-1)
+      ?? node.text
+      ?? node.className?.split('.').at(-1)
+      ?? node.id;
+    const detail = result.missingProperties.length
+      ? `缺少：${result.missingProperties.join(' / ')}`
+      : result.reason;
+    const button = el('button', `audit-result${node.id === state.selectedNodeId ? ' selected' : ''}`);
+    button.type = 'button';
+    button.append(el('span', 'audit-result-title', label), el('span', 'audit-result-detail', detail));
+    button.addEventListener('click', () => selectNodeId(node.id, true));
+    elements['accessibility-audit-list'].append(button);
   }
 }
 

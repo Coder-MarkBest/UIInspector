@@ -102,6 +102,18 @@
         <div class="subheading"><h3>异常候选</h3><span id="finding-count" class="warning-chip">0</span></div>
         <div id="finding-list"></div>
       </section>
+      <section id="accessibility-audit" class="accessibility-audit" hidden>
+        <div class="subheading">
+          <h3>无障碍审计</h3>
+          <span id="accessibility-audit-count" class="warning-chip" title="配置缺失数量">0</span>
+        </div>
+        <div class="audit-filters" aria-label="无障碍审计分类">
+          <button type="button" data-accessibility-filter="enabled" aria-pressed="false">已启用 <span>0</span></button>
+          <button type="button" data-accessibility-filter="disabled" aria-pressed="false">已禁用 <span>0</span></button>
+          <button type="button" data-accessibility-filter="issues" aria-pressed="true">配置缺失 <span>0</span></button>
+        </div>
+        <div id="accessibility-audit-list" class="accessibility-audit-list"></div>
+      </section>
       <div id="properties" class="properties">
         <div class="property-empty">从左侧树、2D 框或 3D 平面选择一个节点。</div>
       </div>

@@ -185,6 +185,18 @@ select, input[type="search"] { height: 30px; padding: 0 9px; min-width: 0; }
 .findings { margin-bottom: 13px; padding: 10px; border: 1px solid #ecc9ad; background: #fff9f4; }
 .subheading h3 { margin: 0; font-size: 11px; }
 .finding-button { width: 100%; margin-top: 7px; padding: 7px; border-color: #ecc9ad; text-align: left; color: var(--orange); cursor: pointer; font-size: 10px; }
+.accessibility-audit { margin-bottom: 13px; padding: 10px; border: 1px solid var(--line); background: #f8fbfc; }
+.audit-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
+.audit-filters button { min-width: 0; padding: 6px 3px; color: var(--muted); cursor: pointer; font: 9px var(--mono); }
+.audit-filters button span { display: inline-block; min-width: 13px; margin-left: 2px; color: var(--blue); }
+.audit-filters button[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); color: var(--ink); }
+.accessibility-audit-list { display: grid; gap: 4px; max-height: 180px; margin-top: 8px; overflow: auto; }
+.audit-result { display: grid; gap: 2px; width: 100%; padding: 6px 7px; text-align: left; cursor: pointer; }
+.audit-result:hover { background: #edf4f7; }
+.audit-result.selected { border-color: var(--blue); box-shadow: inset 2px 0 var(--blue); }
+.audit-result-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font: 10px var(--mono); }
+.audit-result-detail { color: var(--muted); font: 9px/1.35 var(--mono); }
+.audit-empty { margin: 7px 0 0; color: var(--muted); font: 9px/1.4 var(--mono); }
 .diagnostics { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line-strong); }
 .diagnostic-list p { margin: 7px 0; color: var(--muted); font: 10px/1.45 var(--mono); }
 .diagnostic-list .warn { color: var(--orange); }

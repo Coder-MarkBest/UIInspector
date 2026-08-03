@@ -3,6 +3,7 @@
 .intellijPlatform/
 .superpowers/
 .worktrees/
+.DS_Store
 **/build/
 **/.cxx/
 local.properties

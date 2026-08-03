@@ -167,8 +167,9 @@ public final class AgentDeployer {
                     "exec-out", "run-as", packageName, "cat", relativePath)), COMMAND_TIMEOUT);
             if (result.exitCode() == 0 && !result.stdout().isBlank()) {
                 try {
-                    return SnapshotJson.decode(result.stdout());
-                } catch (RuntimeException error) {
+                    return SnapshotJson.decode(
+                            AdbJsonOutput.payload(result.stdout(), "Target View snapshot"));
+                } catch (IOException | RuntimeException error) {
                     lastError = error.getMessage();
                 }
             } else {
@@ -189,8 +190,9 @@ public final class AgentDeployer {
                     "exec-out", "run-as", packageName, "cat", relativePath)), COMMAND_TIMEOUT);
             if (result.exitCode() == 0 && !result.stdout().isBlank()) {
                 try {
-                    return MutationJson.decodeResult(result.stdout());
-                } catch (RuntimeException error) {
+                    return MutationJson.decodeResult(
+                            AdbJsonOutput.payload(result.stdout(), "Target mutation result"));
+                } catch (IOException | RuntimeException error) {
                     lastError = error.getMessage();
                 }
             } else {

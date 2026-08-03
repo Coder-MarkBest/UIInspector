@@ -33,6 +33,21 @@ class SemanticCaptureTest {
                 adb.commands.get(0));
     }
 
+    @Test
+    void readsSnapshotAfterWindowsAdbDiagnosticPrefix() throws Exception {
+        var expected = new InspectionSnapshot(
+                1, 10L, "unknown", CaptureScope.GLOBAL, null, null,
+                List.of(), List.of(), Map.of(), List.of(), null);
+        String output = "adb.exe: warning: transport emitted a host diagnostic\r\n"
+                + SnapshotJson.encode(expected) + "\r\n";
+
+        var actual = new SemanticCapture(new SnapshotAdb(output)).capture(
+                "device", CaptureScope.GLOBAL, null);
+
+        assertEquals(CaptureScope.GLOBAL, actual.scope());
+        assertEquals("device", actual.deviceSerial());
+    }
+
     private static final class SnapshotAdb implements AdbClient {
         final List<List<String>> commands = new ArrayList<>();
         final byte[] snapshot;

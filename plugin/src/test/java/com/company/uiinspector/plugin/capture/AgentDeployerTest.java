@@ -54,6 +54,24 @@ class AgentDeployerTest {
     }
 
     @Test
+    void readsPrivateSnapshotAfterWindowsAdbDiagnosticPrefix() throws Exception {
+        var snapshot = new InspectionSnapshot(
+                1, 20L, "device", CaptureScope.TARGET_PROCESS, "com.example", "com.example",
+                List.of(), List.of(), Map.of(), List.of(), null);
+        var adb = new RecordingAdb(
+                "adb.exe: warning: transport emitted a host diagnostic\r\n"
+                        + SnapshotJson.encode(snapshot) + "\r\n");
+        var payloads = new AgentPayloads(
+                Path.of("helper.apk"),
+                Map.of("arm64-v8a", Path.of("arm64", "libuiinspector_agent.so")));
+
+        var result = new AgentDeployer(adb, payloads, () -> "capture-1").capture(
+                "device", new RunningProcess("u0_a1", 123, "com.example", "com.example"), "arm64-v8a");
+
+        assertEquals("com.example", result.targetPackage());
+    }
+
+    @Test
     void rejectsUnsupportedAbiBeforeAnyAdbMutation() {
         var adb = new RecordingAdb("{}");
         var deployer = new AgentDeployer(
@@ -108,6 +126,35 @@ class AgentDeployerTest {
                 .findFirst().orElseThrow();
         assertTrue(cleanup.contains("code_cache/uiinspector/command-capture-1.json"));
         assertTrue(cleanup.contains("code_cache/uiinspector/mutation-result-capture-1.json"));
+    }
+
+    @Test
+    void readsMutationResultAfterWindowsAdbDiagnosticPrefix() throws Exception {
+        var snapshot = new InspectionSnapshot(
+                1, 20L, "device", CaptureScope.TARGET_PROCESS, "com.example", "com.example",
+                List.of(), List.of(), Map.of(), List.of(), null);
+        var expected = new MutationResult(
+                1, true, "ok", "Applied", "1.0", "0.5", snapshot);
+        var adb = new RecordingAdb(
+                SnapshotJson.encode(snapshot),
+                "adb.exe: warning: transport emitted a host diagnostic\r\n"
+                        + MutationJson.encodeResult(expected) + "\r\n");
+        var deployer = new AgentDeployer(
+                adb,
+                new AgentPayloads(
+                        Path.of("helper.apk"),
+                        Map.of("arm64-v8a", Path.of("arm64", "libuiinspector_agent.so"))),
+                () -> "capture-1");
+        var command = new MutationCommand(
+                1, "v:n:0:0", "android.view.View", "com.example:id/root",
+                "alpha", "setter:setAlpha", EditorTarget.VIEW, EditorValueType.FLOAT, "0.5");
+
+        var result = deployer.mutate(
+                "device", new RunningProcess("u0_a1", 123, "com.example", "com.example"),
+                "arm64-v8a", command);
+
+        assertTrue(result.success());
+        assertEquals("0.5", result.appliedValue());
     }
 
     private static final class RecordingAdb implements AdbClient {

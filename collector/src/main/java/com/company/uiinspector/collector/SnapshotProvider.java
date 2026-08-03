@@ -66,7 +66,7 @@ public final class SnapshotProvider extends ContentProvider {
 
     private void enforceShellCaller() {
         int uid = Binder.getCallingUid();
-        if (uid != Process.SHELL_UID && uid != Process.myUid()) {
+        if (uid != Process.SHELL_UID && uid != Process.ROOT_UID && uid != Process.myUid()) {
             throw new SecurityException("Only adb shell may read UI Inspector snapshots.");
         }
     }

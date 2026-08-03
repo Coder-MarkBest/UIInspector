@@ -37,7 +37,7 @@ intellijPlatform {
             untilBuild = "261.*"
         }
         vendor {
-            name = "Company Android Tools"
+            name = "Coder-MarkBest"
         }
     }
     pluginVerification {

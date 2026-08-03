@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.company.uiinspector</id>
     <name>Android UI Inspector</name>
-    <vendor>Company Android Tools</vendor>
+    <vendor>Coder-MarkBest</vendor>
 
     <depends>com.intellij.modules.platform</depends>
 

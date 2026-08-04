@@ -3,15 +3,18 @@ package com.company.uiinspector.plugin.capture;
 import java.io.IOException;
 
 final class AdbJsonOutput {
-    private static final String PAYLOAD_START = "{\"schemaVersion\":";
+    private static final String SCHEMA_KEY = "\"schemaVersion\":";
 
     private AdbJsonOutput() {}
 
     static String payload(String output, String operation) throws IOException {
-        int start = output == null ? -1 : output.indexOf(PAYLOAD_START);
-        if (start < 0) {
+        if (output == null) {
             throw new IOException(operation + " did not return a UI Inspector JSON payload.");
         }
-        return output.substring(start).stripTrailing();
+        int bracePos = output.indexOf('{');
+        if (bracePos < 0 || !output.contains(SCHEMA_KEY)) {
+            throw new IOException(operation + " did not return a UI Inspector JSON payload.");
+        }
+        return output.substring(bracePos).stripTrailing();
     }
 }

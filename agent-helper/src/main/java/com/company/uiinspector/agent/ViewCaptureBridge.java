@@ -8,6 +8,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -34,6 +35,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 public final class ViewCaptureBridge {
+    private static final String TAG = "UIInspectorAgent";
     private static final List<String> GROUPS = List.of(
             "identity", "windowHierarchy", "geometryLayout", "renderingTransform",
             "content", "interactionState", "accessibility", "captureDiagnostics");
@@ -46,17 +48,29 @@ public final class ViewCaptureBridge {
             List<View> roots,
             List<WindowManager.LayoutParams> windowParams,
             String outputPath) {
+        Log.i(TAG, "ViewCaptureBridge.capture called: roots=" + roots.size()
+                + " output=" + outputPath + " thread=" + Thread.currentThread().getName());
         Runnable capture = () -> {
+            Log.i(TAG, "captureNow starting on thread=" + Thread.currentThread().getName());
+            long startMs = System.currentTimeMillis();
             String packageName = roots.isEmpty() ? null : roots.get(0).getContext().getPackageName();
             InspectionSnapshot snapshot = captureNow(
                     roots, windowParams, "", packageName, Application.getProcessName());
-            Thread writer = new Thread(() -> write(snapshot, outputPath), "uiinspector-agent-writer");
+            Log.i(TAG, "captureNow finished: windows=" + snapshot.windows().size()
+                    + " nodes=" + snapshot.nodes().size()
+                    + " elapsedMs=" + (System.currentTimeMillis() - startMs));
+            Thread writer = new Thread(() -> {
+                write(snapshot, outputPath);
+                Log.i(TAG, "Snapshot written to " + outputPath);
+            }, "uiinspector-agent-writer");
             writer.setDaemon(true);
             writer.start();
         };
         if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.i(TAG, "Running capture directly on main thread");
             capture.run();
         } else {
+            Log.i(TAG, "Posting capture to main thread handler");
             new Handler(Looper.getMainLooper()).post(capture);
         }
     }

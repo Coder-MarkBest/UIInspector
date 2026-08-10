@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 public final class CollectorManager {
     public static final String PACKAGE_NAME = "com.company.uiinspector.collector";
-    private static final int VERSION_CODE = 1;
+    private static final int VERSION_CODE = 2;
     private static final Pattern CURRENT_VERSION = Pattern.compile("\\bversionCode=" + VERSION_CODE + "\\b");
     private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(2);
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(20);

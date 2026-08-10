@@ -24,6 +24,19 @@ public final class SnapshotProvider extends ContentProvider {
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         enforceShellCaller();
+        String path = uri.getPath();
+        if (path != null && path.contains("highlight")) {
+            if (!"r".equals(mode)) throw new FileNotFoundException("Highlight is read-only.");
+            handleHighlight(uri);
+            ParcelFileDescriptor[] pipe;
+            try {
+                pipe = ParcelFileDescriptor.createPipe();
+            } catch (IOException error) {
+                throw new FileNotFoundException(error.getMessage());
+            }
+            new Thread(() -> writeOk(pipe[1]), "uiinspector-highlight").start();
+            return pipe[0];
+        }
         if (!"r".equals(mode)) throw new FileNotFoundException("Snapshot provider is read-only.");
         ParcelFileDescriptor[] pipe;
         try {
@@ -33,6 +46,34 @@ public final class SnapshotProvider extends ContentProvider {
         }
         new Thread(() -> writeSnapshot(pipe[1], uri), "uiinspector-snapshot").start();
         return pipe[0];
+    }
+
+    private void handleHighlight(Uri uri) {
+        String bounds = uri.getQueryParameter("bounds");
+        if (bounds == null || bounds.isEmpty()) {
+            UiInspectorAccessibilityService service = UiInspectorAccessibilityService.current();
+            if (service != null) service.clearHighlight();
+            return;
+        }
+        String[] parts = bounds.split(",");
+        if (parts.length != 4) return;
+        try {
+            int left = Integer.parseInt(parts[0]);
+            int top = Integer.parseInt(parts[1]);
+            int right = Integer.parseInt(parts[2]);
+            int bottom = Integer.parseInt(parts[3]);
+            UiInspectorAccessibilityService service = UiInspectorAccessibilityService.current();
+            if (service != null) service.showHighlight(left, top, right, bottom);
+        } catch (NumberFormatException ignored) {
+            // Invalid bounds; skip.
+        }
+    }
+
+    private static void writeOk(ParcelFileDescriptor output) {
+        try (ParcelFileDescriptor descriptor = output;
+             FileOutputStream stream = new FileOutputStream(descriptor.getFileDescriptor())) {
+            stream.write("{\"ok\":true}".getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ignored) {}
     }
 
     private void writeSnapshot(ParcelFileDescriptor output, Uri uri) {

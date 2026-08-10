@@ -19,8 +19,8 @@ import java.util.logging.Logger;
 public final class AgentDeployer {
     private static final Logger LOG = Logger.getLogger(AgentDeployer.class.getName());
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(20);
-    private static final Duration ATTACH_TIMEOUT = Duration.ofSeconds(30);
-    private static final Duration CAPTURE_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration ATTACH_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration CAPTURE_TIMEOUT = Duration.ofSeconds(45);
 
     private final AdbClient adb;
     private final AgentPayloads payloads;
@@ -107,7 +107,7 @@ public final class AgentDeployer {
             shellArgs.add(args.get(0));  // command name
             for (int i = 1; i < args.size(); i++) {
                 String arg = args.get(i);
-                if (arg.startsWith("-") || arg.contains("/")) {
+                if (arg.startsWith("-") || arg.startsWith("/") || arg.chars().allMatch(Character::isDigit)) {
                     shellArgs.add(arg);
                 } else {
                     shellArgs.add(app.path + "/" + arg);
@@ -124,7 +124,7 @@ public final class AgentDeployer {
             return adbRun(serial, List.of("exec-out", "run-as", packageName, "cat", relativePath),
                     COMMAND_TIMEOUT, null).stdout();
         }
-        return adbRun(serial, List.of("exec-out", "cat", app.path + "/" + relativePath),
+        return adbRun(serial, List.of("shell", "cat", app.path + "/" + relativePath),
                 COMMAND_TIMEOUT, null).stdout();
     }
 
@@ -213,6 +213,96 @@ public final class AgentDeployer {
     private void push(String serial, Path local, String remote, String operation)
             throws IOException, InterruptedException {
         adbRun(serial, List.of("push", local.toString(), remote), COMMAND_TIMEOUT, operation);
+    }
+
+    // ── highlight ─────────────────────────────────────────────────────────
+
+    public void highlight(String serial, RunningProcess process, String abi, String nodeId)
+            throws EnhancedCaptureUnavailableException, InterruptedException {
+        Path agent = payloads.agentFor(abi);
+        if (agent == null) {
+            throw new EnhancedCaptureUnavailableException("No JVMTI agent payload for device ABI " + abi + ".");
+        }
+        String packageName = process.packageName();
+        String captureId = safe(captureIds.get());
+        String prefix = "/data/local/tmp/uiinspector-" + process.pid() + "-" + captureId;
+        String tempHelper = prefix + "-helper-hl.apk";
+        String tempAgent = prefix + "-agent-hl.so";
+        AppDir app = null;
+        try {
+            app = resolveAppDir(serial, packageName);
+
+            push(serial, payloads.helperApk(), tempHelper, "Deploying highlight helper");
+            push(serial, agent, tempAgent, "Deploying highlight agent");
+            adbRun(serial, List.of("shell", "chmod", "0644", tempHelper, tempAgent),
+                    COMMAND_TIMEOUT, "Preparing highlight payloads");
+
+            String remoteDir = "code_cache/uiinspector";
+            String helperFile = remoteDir + "/helper-hl-" + captureId + ".apk";
+            String agentFile = remoteDir + "/libuiinspector_agent_hl_" + captureId + ".so";
+            String resultFile = remoteDir + "/highlight-result-" + captureId + ".json";
+
+            appShell(app, serial, packageName,
+                    List.of("mkdir", "-p", remoteDir), "Creating highlight directory");
+            appShell(app, serial, packageName,
+                    List.of("cp", tempHelper, helperFile), "Copying highlight helper");
+            appShell(app, serial, packageName,
+                    List.of("cp", tempAgent, agentFile), "Copying highlight agent");
+            appShell(app, serial, packageName,
+                    List.of("chmod", "0444", helperFile, agentFile),
+                    "Protecting highlight payloads");
+
+            String remoteAgent = app.path + "/" + agentFile;
+            String remoteHelper = app.path + "/" + helperFile;
+            String remoteResult = app.path + "/" + resultFile;
+            String safeNodeId = nodeId == null ? "" : nodeId;
+
+            adbRun(serial, List.of(
+                    "shell", "cmd", "activity", "attach-agent", process.processName(),
+                    remoteAgent + "=" + remoteHelper + ",highlight_" + safeNodeId + "," + remoteResult),
+                    ATTACH_TIMEOUT, "Attaching highlight JVMTI agent");
+            LOG.fine("Highlight attach-agent sent for " + process.processName());
+
+            waitForHighlightResult(app, serial, packageName, resultFile);
+        } catch (IOException error) {
+            LOG.warning("Highlight failed for " + process.processName() + ": " + error.getMessage());
+        } finally {
+            cleanupHighlight(serial, captureId, tempHelper, tempAgent, app);
+        }
+    }
+
+    private void waitForHighlightResult(AppDir app, String serial, String packageName, String relativePath)
+            throws IOException, InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline) {
+            try {
+                String stdout = appRead(app, serial, packageName, relativePath);
+                if (stdout != null && stdout.contains("\"ok\":true")) {
+                    LOG.fine("Highlight result confirmed");
+                    return;
+                }
+            } catch (IOException ignored) {
+                // File not ready yet.
+            }
+            Thread.sleep(50);
+        }
+        LOG.fine("Highlight result polling ended (timeout or success)");
+    }
+
+    private void cleanupHighlight(String serial, String captureId,
+            String tempHelper, String tempAgent, AppDir app) {
+        try {
+            adb.run(withSerial(serial, List.of("shell", "rm", "-f", tempHelper, tempAgent)),
+                    COMMAND_TIMEOUT);
+            if (app != null) {
+                appRemove(app, serial, null, List.of(
+                        "code_cache/uiinspector/helper-hl-" + captureId + ".apk",
+                        "code_cache/uiinspector/libuiinspector_agent_hl_" + captureId + ".so",
+                        "code_cache/uiinspector/highlight-result-" + captureId + ".json"));
+            }
+        } catch (Exception ignored) {
+            // Cleanup is best effort.
+        }
     }
 
     private InspectionSnapshot waitForSnapshot(AppDir app, String serial, String packageName, String relativePath)

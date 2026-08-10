@@ -262,6 +262,55 @@ bool run_mutation(
     return true;
 }
 
+bool run_highlight(
+        JNIEnv* env,
+        const std::string& helper_path,
+        const std::string& node_id,
+        const std::string& output_path) {
+    __android_log_print(ANDROID_LOG_INFO, kTag, "Starting highlight: helper=%s nodeId=%s output=%s",
+            helper_path.c_str(), node_id.c_str(), output_path.c_str());
+    jobject global = window_manager_global(env);
+    if (global == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "WindowManagerGlobal unavailable for highlight");
+        return false;
+    }
+    jobject views = field(env, global, "mViews", "Ljava/util/ArrayList;");
+    if (views == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "mViews field unavailable for highlight");
+        return false;
+    }
+    jobject roots = field(env, global, "mRoots", "Ljava/util/ArrayList;");
+    jobject params = collect_window_params(env, roots, size(env, views));
+    if (params == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "collect_window_params failed for highlight");
+        return false;
+    }
+
+    jclass helper = load_helper(
+            env, helper_path, "com.company.uiinspector.agent.ViewHighlightBridge");
+    if (helper == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "Failed to load ViewHighlightBridge from helper APK");
+        return false;
+    }
+    __android_log_print(ANDROID_LOG_INFO, kTag, "ViewHighlightBridge loaded");
+    jmethodID highlight = env->GetStaticMethodID(
+            helper, "highlight",
+            "(Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V");
+    if (highlight == nullptr || clear_exception(env, "Find ViewHighlightBridge.highlight")) {
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "ViewHighlightBridge.highlight method not found");
+        return false;
+    }
+    jstring node = env->NewStringUTF(node_id.c_str());
+    jstring output = env->NewStringUTF(output_path.c_str());
+    env->CallStaticVoidMethod(helper, highlight, views, params, node, output);
+    if (clear_exception(env, "Call ViewHighlightBridge.highlight")) {
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "ViewHighlightBridge.highlight threw exception");
+        return false;
+    }
+    __android_log_print(ANDROID_LOG_INFO, kTag, "Highlight applied successfully");
+    return true;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jint JNICALL Agent_OnAttach(JavaVM* vm, char* options, void*) {
@@ -280,11 +329,19 @@ extern "C" JNIEXPORT jint JNICALL Agent_OnAttach(JavaVM* vm, char* options, void
         return JNI_ERR;
     }
     const bool is_capture = parsed.command_path.empty();
+    const bool is_highlight = !is_capture
+            && parsed.command_path.find("highlight_") == 0;
     __android_log_print(ANDROID_LOG_INFO, kTag, "Dispatching %s",
-            is_capture ? "capture" : "mutation");
-    const bool success = is_capture
-            ? run_capture(env, parsed.helper_path, parsed.output_path)
-            : run_mutation(env, parsed.helper_path, parsed.command_path, parsed.output_path);
+            is_capture ? "capture" : is_highlight ? "highlight" : "mutation");
+    bool success;
+    if (is_capture) {
+        success = run_capture(env, parsed.helper_path, parsed.output_path);
+    } else if (is_highlight) {
+        std::string node_id = parsed.command_path.substr(10);  // after "highlight_"
+        success = run_highlight(env, parsed.helper_path, node_id, parsed.output_path);
+    } else {
+        success = run_mutation(env, parsed.helper_path, parsed.command_path, parsed.output_path);
+    }
     __android_log_print(ANDROID_LOG_INFO, kTag, "Agent_OnAttach returning %s",
             success ? "JNI_OK" : "JNI_ERR");
     return success ? JNI_OK : JNI_ERR;

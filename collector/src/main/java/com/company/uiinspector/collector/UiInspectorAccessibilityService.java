@@ -23,6 +23,10 @@ public final class UiInspectorAccessibilityService extends AccessibilityService 
         return instance;
     }
 
+    private android.view.WindowManager overlayWm;
+    private android.view.View highlightOverlay;
+    private android.view.WindowManager.LayoutParams overlayParams;
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
@@ -31,13 +35,57 @@ public final class UiInspectorAccessibilityService extends AccessibilityService 
                 | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
                 | AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
         setServiceInfo(info);
+        overlayWm = (android.view.WindowManager) getSystemService(WINDOW_SERVICE);
         instance = this;
     }
 
     @Override
     public void onDestroy() {
+        clearHighlight();
         if (instance == this) instance = null;
         super.onDestroy();
+    }
+
+    void showHighlight(int left, int top, int right, int bottom) {
+        android.os.Handler main = new android.os.Handler(getMainLooper());
+        main.post(() -> applyHighlight(left, top, right, bottom));
+    }
+
+    private void applyHighlight(int left, int top, int right, int bottom) {
+        clearHighlightNow();
+        if (overlayWm == null) return;
+        android.view.View view = new android.view.View(this);
+        int borderPx = Math.max(2, Math.round(3 * getResources().getDisplayMetrics().density));
+        android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
+        border.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+        border.setStroke(borderPx, 0xFF00BFFF);
+        border.setColor(0x00000000);
+        view.setBackground(border);
+
+        android.view.WindowManager.LayoutParams params = new android.view.WindowManager.LayoutParams(
+                right - left, bottom - top,
+                left, top,
+                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                android.graphics.PixelFormat.TRANSLUCENT);
+        overlayWm.addView(view, params);
+        highlightOverlay = view;
+        overlayParams = params;
+    }
+
+    void clearHighlight() {
+        android.os.Handler main = new android.os.Handler(getMainLooper());
+        main.post(this::clearHighlightNow);
+    }
+
+    private void clearHighlightNow() {
+        if (highlightOverlay != null && overlayWm != null) {
+            try { overlayWm.removeView(highlightOverlay); } catch (RuntimeException ignored) {}
+            highlightOverlay = null;
+            overlayParams = null;
+        }
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {}

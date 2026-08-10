@@ -88,5 +88,8 @@ class InspectorServerTest {
             mutateCalls++;
             return "{\"status\":\"mutated\"}";
         }
+        @Override public String highlight(String body, Map<String, String> query) {
+            return "{\"ok\":true}";
+        }
     }
 }

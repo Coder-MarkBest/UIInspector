@@ -3,6 +3,7 @@ package com.company.uiinspector.plugin.capture;
 import com.company.uiinspector.plugin.adb.AdbClient;
 import com.company.uiinspector.protocol.CaptureScope;
 import com.company.uiinspector.protocol.InspectionSnapshot;
+import com.company.uiinspector.protocol.Rect;
 import com.company.uiinspector.protocol.SnapshotJson;
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -15,6 +16,19 @@ public final class SemanticCapture {
 
     public SemanticCapture(AdbClient adb) {
         this.adb = adb;
+    }
+
+    public void highlight(String serial, Rect bounds) throws IOException, InterruptedException {
+        StringBuilder uri = new StringBuilder(
+                "content://com.company.uiinspector.collector/highlight");
+        if (bounds != null) {
+            uri.append("?bounds=").append(bounds.left()).append(",")
+                    .append(bounds.top()).append(",")
+                    .append(bounds.right()).append(",")
+                    .append(bounds.bottom());
+        }
+        adb.run(List.of("-s", serial, "exec-out", "content", "read", "--uri", uri.toString()),
+                Duration.ofSeconds(5));
     }
 
     public InspectionSnapshot capture(String serial, CaptureScope scope, String packageName)

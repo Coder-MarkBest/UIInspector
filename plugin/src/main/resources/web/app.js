@@ -52,6 +52,8 @@ let state = {
   expanded: new Set(),
   findings: [],
   accessibilityAudit: { enabled: [], disabled: [], issues: [] },
+  twoD: { zoom: 1, panX: 0, panY: 0 },
+  treeWidth: 306,
   accessibilityFilter: 'issues',
   editingProperty: null,
   mutationBusy: false,
@@ -122,6 +124,99 @@ function bind() {
     renderStage();
   }));
   bindSceneControls();
+  bindTwoDPanZoom();
+  bindTreeResize();
+}
+
+function bindTreeResize() {
+  const handle = document.getElementById('tree-resize-handle');
+  let drag = null;
+
+  handle.addEventListener('pointerdown', event => {
+    drag = { x: event.clientX, pointerId: event.pointerId };
+    handle.classList.add('active');
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  handle.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const delta = event.clientX - drag.x;
+    drag.x = event.clientX;
+    const current = parseFloat(getComputedStyle(document.querySelector('.workspace')).gridTemplateColumns.split(' ')[0]) || 306;
+    const next = Math.max(180, Math.min(600, current + delta));
+    state.treeWidth = next;
+    document.querySelector('.workspace').style.setProperty('--tree-width', `${next}px`);
+  });
+  const clear = () => {
+    drag = null;
+    handle.classList.remove('active');
+  };
+  handle.addEventListener('pointerup', clear);
+  handle.addEventListener('pointercancel', clear);
+  handle.addEventListener('lostpointercapture', clear);
+}
+
+function bindTwoDPanZoom() {
+  const stage = elements['two-d-stage'];
+  let drag = null;
+
+  stage.addEventListener('wheel', event => {
+    if (!state.snapshot || state.stage !== '2d') return;
+    event.preventDefault();
+    const factor = 1 - Math.sign(event.deltaY) * 0.12;
+    const newZoom = Math.max(0.15, Math.min(6, state.twoD.zoom * factor));
+    // Zoom toward cursor position
+    const rect = elements['screen-frame'].getBoundingClientRect();
+    const cx = event.clientX - rect.left;
+    const cy = event.clientY - rect.top;
+    const ratio = newZoom / state.twoD.zoom;
+    state.twoD.panX = event.clientX - cx * ratio - (rect.left - state.twoD.panX) * ratio;
+    state.twoD.panY = event.clientY - cy * ratio - (rect.top - state.twoD.panY) * ratio;
+    state.twoD.zoom = newZoom;
+    applyTwoDTransform();
+  }, { passive: false });
+
+  const clearDrag = () => {
+    drag = null;
+    stage.classList.remove('two-d-dragging');
+  };
+  const suppressGeneratedClick = () => {
+    const suppress = event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    elements['screen-frame'].addEventListener('click', suppress, { capture: true, once: true });
+    setTimeout(() => elements['screen-frame'].removeEventListener('click', suppress, true), 0);
+  };
+
+  stage.addEventListener('pointerdown', event => {
+    if (!state.snapshot || state.stage !== '2d') return;
+    drag = { x: event.clientX, y: event.clientY, px: state.twoD.panX, py: state.twoD.panY, pointerId: event.pointerId, active: false };
+  });
+  stage.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag.active) {
+      if (!isDragGesture(drag.x, drag.y, event.clientX, event.clientY)) return;
+      drag.active = true;
+      stage.setPointerCapture(event.pointerId);
+      stage.classList.add('two-d-dragging');
+    }
+    state.twoD.panX = drag.px + (event.clientX - drag.x);
+    state.twoD.panY = drag.py + (event.clientY - drag.y);
+    applyTwoDTransform();
+  });
+  stage.addEventListener('pointerup', event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (drag.active) suppressGeneratedClick();
+    clearDrag();
+  });
+  stage.addEventListener('pointercancel', clearDrag);
+  stage.addEventListener('lostpointercapture', clearDrag);
+}
+
+function applyTwoDTransform() {
+  elements['screen-frame'].style.transform =
+    `translate(${state.twoD.panX}px, ${state.twoD.panY}px) scale(${state.twoD.zoom})`;
 }
 
 async function initialize() {
@@ -193,6 +288,7 @@ async function capture() {
 
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
+  state.twoD = { zoom: 1, panX: 0, panY: 0 };
   state.findings = evaluateRules(snapshot, elements['rules-toggle'].checked);
   updateAccessibilityAudit(snapshot, true);
   const displays = [...new Set((snapshot.windows ?? []).map(window => window.displayId))].sort((a, b) => a - b);
@@ -260,6 +356,7 @@ function appendNode(container, id, indent, search, visited) {
   const label = node.className?.split('.').at(-1) ?? node.id;
   const detail = node.resourceId?.split('/').at(-1) ?? node.text ?? '';
   const row = treeRow(`${label}${detail ? ` · ${detail}` : ''}`, `D${node.depth}`, state.selectedNodeId === id, indent, false);
+  row.title = `${node.className ?? ''}\n${node.resourceId ?? ''}\n${node.id}`;
   row.dataset.nodeId = id;
   row.addEventListener('click', () => selectNodeId(id));
   container.append(row);
@@ -339,6 +436,7 @@ function render2d() {
     box.style.height = `${Math.max(2, (node.bounds.bottom - node.bounds.top) * ratio)}px`;
     elements['overlay-layer'].append(box);
   }
+  applyTwoDTransform();
 }
 
 function render3d(items) {
@@ -433,6 +531,7 @@ function renderProperties() {
     return;
   }
   elements['selected-title'].textContent = target.className?.split('.').at(-1) ?? target.title ?? 'Window 属性';
+  elements['selected-title'].title = target.className ?? target.title ?? '';
   elements['selected-source'].textContent = target.source === 'JVMTI' ? 'Real View' : 'Semantic';
   for (const group of groupProperties(target)) {
     const details = el('details', 'property-group');
@@ -492,7 +591,11 @@ function propertyValue(target, name, property) {
     }
     container.append(editor);
   } else {
-    container.append(el('span', 'property-value-main', String(property?.value ?? '')));
+    const valueSpan = el('span', 'property-value-main', String(property?.value ?? ''));
+    if (property?.value && String(property.value).length > 40) {
+      valueSpan.title = String(property.value);
+    }
+    container.append(valueSpan);
     if (model && target.source === 'JVMTI') {
       const actions = el('div', 'property-actions');
       const edit = actionButton('编辑', 'edit');
@@ -732,6 +835,7 @@ function selectWindow(id) {
   state.selectedNodeId = null;
   state.editingProperty = null;
   render();
+  clearHighlightOnDevice();
 }
 
 function selectNodeId(id, revealTree = false) {
@@ -740,6 +844,38 @@ function selectNodeId(id, revealTree = false) {
   state = { ...state, ...selection };
   render();
   if (revealTree) revealTreeNode(id);
+  highlightOnDevice();
+}
+
+let highlightTimer = null;
+
+async function highlightOnDevice() {
+  clearTimeout(highlightTimer);
+  const target = selectedTarget();
+  const nodeId = target?.id ?? null;
+  if (!nodeId) return;
+  highlightTimer = setTimeout(async () => {
+    try {
+      await api('api/highlight', {
+        method: 'POST',
+        body: JSON.stringify({ nodeId })
+      });
+    } catch (ignored) {
+      // Highlight is non-critical; suppress errors.
+    }
+  }, 120);
+}
+
+async function clearHighlightOnDevice() {
+  clearTimeout(highlightTimer);
+  try {
+    await api('api/highlight', {
+      method: 'POST',
+      body: JSON.stringify({ nodeId: '' })
+    });
+  } catch (ignored) {
+    // Highlight is non-critical; suppress errors.
+  }
 }
 
 function revealTreeNode(id) {

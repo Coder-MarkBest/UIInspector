@@ -20,6 +20,7 @@ import com.company.uiinspector.protocol.MutationResult;
 import com.company.uiinspector.protocol.ProcessInfo;
 import com.company.uiinspector.protocol.PropertyGroup;
 import com.company.uiinspector.protocol.PropertyValue;
+import com.company.uiinspector.protocol.Rect;
 import com.company.uiinspector.protocol.SnapshotJson;
 import com.company.uiinspector.protocol.UiNode;
 import com.company.uiinspector.protocol.WindowSnapshot;
@@ -275,6 +276,49 @@ public final class InspectorApi implements InspectorServer.Api {
         }
     }
 
+    @Override
+    public synchronized String highlight(String body, Map<String, String> query) {
+        try {
+            HighlightRequest request = GSON.fromJson(body, HighlightRequest.class);
+            if (request == null) return "{\"ok\":true}";
+            InspectionSnapshot snapshot = current.get();
+            if (snapshot == null) return "{\"ok\":true}";
+
+            String nodeId = request.nodeId == null ? "" : request.nodeId;
+            Rect bounds = null;
+            if (!nodeId.isEmpty()) {
+                var node = snapshot.nodes().get(nodeId);
+                if (node != null) bounds = node.visibleBounds() != null ? node.visibleBounds() : node.bounds();
+                // Try JVMTI path first if this is a Real View node.
+                if (node != null && node.source() == CaptureSource.JVMTI
+                        && snapshot.scope() == CaptureScope.TARGET_PROCESS) {
+                    List<RunningProcess> running = processes.list(snapshot.deviceSerial());
+                    RunningProcess process = running.stream()
+                            .filter(value -> snapshot.targetPackage().equals(value.packageName()))
+                            .filter(value -> snapshot.targetProcess().equals(value.processName()))
+                            .findFirst()
+                            .orElse(null);
+                    if (process != null && processes.isDebuggable(snapshot.deviceSerial(), process.packageName())) {
+                        try {
+                            agents.highlight(snapshot.deviceSerial(), process,
+                                    deviceAbi(snapshot.deviceSerial()), nodeId);
+                            return "{\"ok\":true}";
+                        } catch (Exception ignored) {
+                            // Fall through to semantic path.
+                        }
+                    }
+                }
+            }
+            // Semantic fallback: draw an overlay via AccessibilityService using screen coordinates.
+            if (snapshot.deviceSerial() != null) {
+                semantic.highlight(snapshot.deviceSerial(), bounds);
+            }
+            return "{\"ok\":true}";
+        } catch (Exception error) {
+            return "{\"ok\":false,\"error\":\"" + safeMessage(error) + "\"}";
+        }
+    }
+
     private static void validateRequest(MutationRequest request) {
         if (request == null) throw apiFailure("invalid_request", "Mutation request is missing.");
         require(request.serial, "Select an Android device before editing.");
@@ -357,6 +401,10 @@ public final class InspectorApi implements InspectorServer.Api {
         JsonObject object = new JsonObject();
         object.addProperty("error", error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
         return GSON.toJson(object);
+    }
+
+    private static final class HighlightRequest {
+        String nodeId;
     }
 
     private static final class CaptureRequest {

@@ -161,6 +161,33 @@ public final class AgentDeployer {
         }
     }
 
+    /** Execute multiple file operations inside the app context with a single adb call. */
+    private void appShellScript(AppDir app, String serial, String packageName,
+            String script, String operation)
+            throws IOException, InterruptedException {
+        if (app.usesRunAs) {
+            adbRun(serial, List.of("shell", "run-as", packageName, "sh", "-c", script),
+                    COMMAND_TIMEOUT, operation);
+        } else {
+            adbRun(serial, List.of("shell", "sh", "-c", script),
+                    COMMAND_TIMEOUT, operation);
+        }
+    }
+
+    /** Block until a result file is non-empty, then read it, in a single adb call. */
+    private String appReadBlocking(AppDir app, String serial, String packageName,
+            String relativePath, Duration timeout)
+            throws IOException, InterruptedException {
+        String path = app.usesRunAs ? relativePath : app.path + "/" + relativePath;
+        String script = "f=\"" + path + "\"; n=0; while [ ! -s \"$f\" ] && [ $n -lt 600 ]; do sleep 0.1; n=$((n+1)); done; cat \"$f\"";
+        if (app.usesRunAs) {
+            return adbRun(serial, List.of("exec-out", "run-as", packageName, "sh", "-c", script),
+                    timeout, null).stdout();
+        }
+        return adbRun(serial, List.of("exec-out", "sh", "-c", script),
+                timeout, null).stdout();
+    }
+
     // ── capture ───────────────────────────────────────────────────────────
 
     public InspectionSnapshot capture(String serial, RunningProcess process, String abi)
@@ -188,15 +215,14 @@ public final class AgentDeployer {
             String agentFile = remoteDir + "/libuiinspector_agent_" + captureId + ".so";
             String snapshotFile = remoteDir + "/snapshot-" + captureId + ".json";
 
-            appShell(app, serial, packageName,
-                    List.of("mkdir", "-p", remoteDir), "Creating capture directory");
-            appShell(app, serial, packageName,
-                    List.of("cp", tempHelper, helperFile), "Copying View helper");
-            appShell(app, serial, packageName,
-                    List.of("cp", tempAgent, agentFile), "Copying JVMTI agent");
-            appShell(app, serial, packageName,
-                    List.of("chmod", "0444", helperFile, agentFile),
-                    "Protecting dynamic code payloads");
+            String helperRemote = app.usesRunAs ? helperFile : app.path + "/" + helperFile;
+            String agentRemote = app.usesRunAs ? agentFile : app.path + "/" + agentFile;
+            String dirArg = app.usesRunAs ? remoteDir : app.path + "/" + remoteDir;
+            String prepScript = "mkdir -p " + dirArg
+                    + " && cp " + tempHelper + " " + helperRemote
+                    + " && cp " + tempAgent + " " + agentRemote
+                    + " && chmod 0444 " + helperRemote + " " + agentRemote;
+            appShellScript(app, serial, packageName, prepScript, "Preparing capture payloads");
 
             String remoteAgent = app.path + "/" + agentFile;
             String remoteHelper = app.path + "/" + helperFile;
@@ -317,39 +343,28 @@ public final class AgentDeployer {
 
     private InspectionSnapshot waitForSnapshot(AppDir app, String serial, String packageName, String relativePath)
             throws IOException, InterruptedException, EnhancedCaptureUnavailableException {
+        // 单条阻塞式 adb 读取：设备端循环等待结果文件写入后 cat，避免每 100ms 启动一个新 adb 进程轮询。
         long deadline = System.nanoTime() + CAPTURE_TIMEOUT.toNanos();
-        String lastError = "";
-        int attempts = 0;
-        while (System.nanoTime() < deadline) {
+        for (int attempt = 1; attempt <= 3 && System.nanoTime() < deadline; attempt++) {
+            Duration budget = Duration.ofNanos(Math.max(1, deadline - System.nanoTime()));
             String stdout;
             try {
-                stdout = appRead(app, serial, packageName, relativePath);
+                stdout = appReadBlocking(app, serial, packageName, relativePath, budget);
             } catch (IOException e) {
-                lastError = e.getMessage();
-                Thread.sleep(100);
+                LOG.fine("Blocking snapshot read failed (attempt " + attempt + "): " + e.getMessage());
                 continue;
             }
-            attempts++;
             if (stdout != null && !stdout.isBlank()) {
-                LOG.info("Snapshot file found after " + attempts + " poll attempts");
+                LOG.info("Snapshot file found (attempt " + attempt + ")");
                 try {
                     return SnapshotJson.decode(
                             AdbJsonOutput.payload(stdout, "Target View snapshot"));
                 } catch (IOException | RuntimeException error) {
-                    lastError = error.getMessage();
-                    LOG.warning("Failed to parse snapshot (attempt " + attempts + "): " + lastError);
-                }
-            } else {
-                if (attempts == 1 || attempts % 20 == 0) {
-                    LOG.fine("Polling for snapshot (attempt " + attempts + ")");
+                    LOG.fine("Retrying snapshot parse (attempt " + attempt + "): " + error.getMessage());
                 }
             }
-            Thread.sleep(100);
         }
-        String detail = (lastError == null || lastError.isBlank()) ? "" : " Last error: " + lastError.strip();
-        LOG.warning("Timed out waiting for snapshot after " + attempts + " attempts." + detail);
-        throw new EnhancedCaptureUnavailableException(
-                "Timed out waiting for the target View snapshot." + detail);
+        throw new EnhancedCaptureUnavailableException("Timed out waiting for the target View snapshot.");
     }
 
     private void cleanupCapture(String serial, String packageName, String captureId,

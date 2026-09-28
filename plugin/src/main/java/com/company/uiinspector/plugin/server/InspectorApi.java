@@ -6,7 +6,6 @@ import com.company.uiinspector.plugin.adb.DeviceCatalog;
 import com.company.uiinspector.plugin.adb.ProcessCatalog;
 import com.company.uiinspector.plugin.adb.RunningProcess;
 import com.company.uiinspector.plugin.capture.AgentDeployer;
-import com.company.uiinspector.plugin.capture.EnhancedCaptureUnavailableException;
 import com.company.uiinspector.plugin.capture.ScreenshotCapture;
 import com.company.uiinspector.plugin.capture.SemanticCapture;
 import com.company.uiinspector.plugin.capture.SnapshotMerger;
@@ -56,7 +55,7 @@ public final class InspectorApi implements InspectorServer.Api {
     private final List<String> projectPackages;
     private final AtomicReference<InspectionSnapshot> current = new AtomicReference<>();
     private final AtomicReference<String> status = new AtomicReference<>("idle");
-    private final ExecutorService captureExecutor = Executors.newFixedThreadPool(2, r -> {
+    private final ExecutorService captureExecutor = Executors.newFixedThreadPool(3, r -> {
         Thread thread = new Thread(r, "uiinspector-capture");
         thread.setDaemon(true);
         return thread;
@@ -146,19 +145,46 @@ public final class InspectorApi implements InspectorServer.Api {
             if (request == null || request.serial == null || request.serial.isBlank()) {
                 throw new IllegalArgumentException("Select an Android device before capture.");
             }
-            CaptureScope scope = "global".equalsIgnoreCase(request.scope)
-                    ? CaptureScope.GLOBAL : CaptureScope.TARGET_PROCESS;
+            String scopeParam = request.scope;
+            CaptureScope scope;
+            if ("global".equalsIgnoreCase(scopeParam)) {
+                scope = CaptureScope.GLOBAL;
+            } else if ("process".equalsIgnoreCase(scopeParam)) {
+                scope = CaptureScope.PROCESS_WINDOWS;
+            } else {
+                scope = CaptureScope.TARGET_PROCESS;
+            }
             boolean collectorInstalled = collector.install(request.serial);
 
             List<RunningProcess> running = processes.list(request.serial);
-            RunningProcess target = scope == CaptureScope.TARGET_PROCESS ? findTarget(running, request) : null;
+            boolean needsProcess = scope == CaptureScope.TARGET_PROCESS
+                    || scope == CaptureScope.PROCESS_WINDOWS;
+            RunningProcess target = needsProcess ? findTarget(running, request) : null;
             String packageName = target == null ? null : target.packageName();
 
-            // 并行采集 semantic 和 screenshot，两者互不依赖
+            // 提前判定增强采集是否可用，以便 semantic/screenshot/enhanced 三路并行
+            // PROCESS_WINDOWS 是语义按包名聚合，不启用 JVMTI 增强采集
+            boolean runEnhanced = scope == CaptureScope.TARGET_PROCESS;
+            boolean debuggableTarget = false;
+            String abi = null;
+            if (runEnhanced && target != null) {
+                debuggableTarget = processes.isDebuggable(request.serial, packageName);
+                if (debuggableTarget) {
+                    abi = deviceAbi(request.serial);
+                }
+            }
+
+            // 并行采集 semantic、screenshot、enhanced（互不依赖）
             Future<InspectionSnapshot> semanticFuture = captureExecutor.submit(
                     () -> semantic.capture(request.serial, scope, packageName));
             Future<Screenshot> screenshotFuture = captureExecutor.submit(
                     () -> screenshots.capture(request.serial));
+            Future<InspectionSnapshot> enhancedFuture = null;
+            if (debuggableTarget && abi != null && !abi.isBlank()) {
+                enhancedFuture = captureExecutor.submit(
+                        () -> agents.capture(request.serial, target, abi));
+            }
+
             InspectionSnapshot semanticSnapshot;
             Screenshot screenshot;
             try {
@@ -169,27 +195,28 @@ public final class InspectorApi implements InspectorServer.Api {
                 if (e.getCause() instanceof InterruptedException ie) throw ie;
                 throw new IOException("Parallel capture failed.", e.getCause());
             }
-            List<ProcessInfo> processInfo = new ArrayList<>();
             InspectionSnapshot enhanced = null;
-            Diagnostic degradation = null;
+            Diagnostic degradation = runEnhanced && target != null && !debuggableTarget
+                    ? new Diagnostic("WARN", "enhanced_unavailable",
+                            "Target process is not debuggable; showing public semantic nodes.")
+                    : null;
+            if (enhancedFuture != null) {
+                try {
+                    enhanced = enhancedFuture.get(50, TimeUnit.SECONDS);
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    degradation = new Diagnostic("WARN", "enhanced_unavailable",
+                            cause == null || cause.getMessage() == null
+                                    ? "Enhanced capture failed."
+                                    : cause.getMessage());
+                }
+            }
+            List<ProcessInfo> processInfo = new ArrayList<>();
             for (RunningProcess value : running) {
                 boolean selected = target != null && value.pid() == target.pid();
-                boolean debuggable = selected && processes.isDebuggable(request.serial, value.packageName());
                 processInfo.add(new ProcessInfo(
-                        value.pid(), value.user(), value.packageName(), value.processName(), debuggable));
-                if (selected) {
-                    if (debuggable) {
-                        try {
-                            enhanced = agents.capture(request.serial, target, deviceAbi(request.serial));
-                        } catch (EnhancedCaptureUnavailableException error) {
-                            degradation = new Diagnostic("WARN", "enhanced_unavailable", error.getMessage());
-                        }
-                    } else {
-                        degradation = new Diagnostic(
-                                "WARN", "enhanced_unavailable",
-                                "Target process is not debuggable; showing public semantic nodes.");
-                    }
-                }
+                        value.pid(), value.user(), value.packageName(), value.processName(),
+                        selected && debuggableTarget));
             }
             Diagnostic installWarning = collectorInstalled
                     ? new Diagnostic("WARN", "collector_updated",

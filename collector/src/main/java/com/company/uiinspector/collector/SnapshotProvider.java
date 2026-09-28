@@ -97,8 +97,10 @@ public final class SnapshotProvider extends ContentProvider {
                     null);
             return SnapshotJson.encode(empty);
         }
-        CaptureScope scope = "target".equals(uri.getQueryParameter("scope"))
-                ? CaptureScope.TARGET_PROCESS : CaptureScope.GLOBAL;
+        String scopeParam = uri.getQueryParameter("scope");
+        CaptureScope scope = "process".equals(scopeParam)
+                ? CaptureScope.PROCESS_WINDOWS
+                : "target".equals(scopeParam) ? CaptureScope.TARGET_PROCESS : CaptureScope.GLOBAL;
         String packageName = uri.getQueryParameter("package");
         int maxNodes = number(uri.getQueryParameter("maxNodes"), 10_000, 1, 50_000);
         int maxDepth = number(uri.getQueryParameter("maxDepth"), 200, 0, 500);

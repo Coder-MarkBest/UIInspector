@@ -35,8 +35,13 @@ public final class SemanticCapture {
             throws IOException, InterruptedException {
         StringBuilder uri = new StringBuilder(
                 "content://com.company.uiinspector.collector/snapshot?scope=")
-                .append(scope == CaptureScope.TARGET_PROCESS ? "target" : "global");
-        if (scope == CaptureScope.TARGET_PROCESS && packageName != null) {
+                .append(switch (scope) {
+                    case TARGET_PROCESS -> "target";
+                    case PROCESS_WINDOWS -> "process";
+                    case GLOBAL -> "global";
+                });
+        if ((scope == CaptureScope.TARGET_PROCESS || scope == CaptureScope.PROCESS_WINDOWS)
+                && packageName != null) {
             uri.append("&package=").append(URLEncoder.encode(packageName, StandardCharsets.UTF_8));
         }
         uri.append("&maxNodes=5000&maxDepth=200");

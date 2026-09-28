@@ -14,7 +14,6 @@ import {
   mutationKey,
   outsideViewport,
   pickNodeAt,
-  preferredProjectProcess,
   previewPoint,
   propertyEditorModel,
   propertyGroupOpen,
@@ -24,7 +23,6 @@ import {
   rememberPropertyGroupOpen,
   selectNode,
   screenshotSlice,
-  shouldAutoCapture,
   toggleExpanded,
   windowViewZIndex
 } from './inspector-core.js';
@@ -80,7 +78,10 @@ function bind() {
     elements['process-select'].disabled = elements['scope-select'].value === 'global';
     renderToolbar();
   });
-  elements['process-select'].addEventListener('change', clearMutationState);
+  elements['process-select'].addEventListener('change', () => {
+    clearMutationState();
+    if (elements['scope-select'].value !== 'global') capture();
+  });
   elements['capture-button'].addEventListener('click', capture);
   elements['tree-search'].addEventListener('input', renderTree);
   elements['screen-frame'].addEventListener('click', event => {
@@ -229,13 +230,13 @@ async function initialize() {
       ? session.projectPackages
       : session.defaultPackage ? [session.defaultPackage] : [];
     if (session.snapshot) applySnapshot(session.snapshot);
-    await fillDevices(Array.isArray(devices) ? devices : [], true);
+    await fillDevices(Array.isArray(devices) ? devices : []);
   } catch (error) {
     fail(error);
   }
 }
 
-async function loadProcesses(autoCapture = false) {
+async function loadProcesses() {
   const serial = elements['device-select'].value;
   elements['process-select'].replaceChildren(option('', '选择进程'));
   if (!serial) return;
@@ -248,12 +249,6 @@ async function loadProcesses(autoCapture = false) {
       item.dataset.process = process.processName;
       elements['process-select'].append(item);
     }
-    const preferred = preferredProjectProcess(processes, state.projectPackages);
-    if (preferred) elements['process-select'].value = String(preferred.pid);
-    if (autoCapture && shouldAutoCapture({ attempted: state.autoCaptureAttempted, process: preferred })) {
-      state.autoCaptureAttempted = true;
-      await capture();
-    }
   } catch (error) {
     fail(error);
   }
@@ -264,7 +259,7 @@ async function capture() {
   const scope = elements['scope-select'].value;
   const processOption = elements['process-select'].selectedOptions[0];
   if (!serial) return fail(new Error('请先选择已授权的 Android 设备。'));
-  if (scope === 'target' && !processOption?.value) return fail(new Error('请选择目标进程。'));
+  if (scope !== 'global' && !processOption?.value) return fail(new Error('请选择目标进程。'));
   clearMutationState();
   setCapturing(true);
   try {
@@ -1028,7 +1023,7 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-async function fillDevices(devices, autoCapture = false) {
+async function fillDevices(devices) {
   elements['device-select'].replaceChildren(option('', '选择设备'));
   for (const device of devices) {
     const item = option(device.serial, `${device.model ?? device.serial} · ${device.state}`);
@@ -1038,7 +1033,7 @@ async function fillDevices(devices, autoCapture = false) {
   const first = devices.find(device => device.ready);
   if (first) {
     elements['device-select'].value = first.serial;
-    await loadProcesses(autoCapture);
+    await loadProcesses();
   }
 }
 

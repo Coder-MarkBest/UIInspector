@@ -24,9 +24,7 @@ public final class AccessibilitySnapshotCollector {
 
     public InspectionSnapshot collect(List<? extends WindowData> input, Request request) {
         List<WindowData> included = input.stream()
-                .filter(window -> request.scope() == CaptureScope.GLOBAL
-                        || request.packageName() == null
-                        || request.packageName().equals(window.packageName()))
+                .filter(window -> scopeIncludes(window, request))
                 .sorted(Comparator.comparingInt(WindowData::layer).thenComparingInt(WindowData::id))
                 .map(window -> (WindowData) window)
                 .toList();
@@ -80,6 +78,16 @@ public final class AccessibilitySnapshotCollector {
                 nodes,
                 diagnostics,
                 null);
+    }
+
+    private static boolean scopeIncludes(WindowData window, Request request) {
+        return switch (request.scope()) {
+            case GLOBAL -> true;
+            case PROCESS_WINDOWS -> request.packageName() != null
+                    && request.packageName().equals(window.packageName());
+            case TARGET_PROCESS -> request.packageName() == null
+                    || request.packageName().equals(window.packageName());
+        };
     }
 
     private static void collectNode(

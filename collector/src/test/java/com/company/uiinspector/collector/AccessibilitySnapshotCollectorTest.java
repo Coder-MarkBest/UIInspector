@@ -64,6 +64,25 @@ public class AccessibilitySnapshotCollectorTest {
     }
 
     @Test
+    public void processWindowsScopeIncludesAllWindowsOfTargetPackage() {
+        var mainRoot = node("com.app", "FrameLayout", Map.of("class", "FrameLayout"));
+        var overlayRoot = node("com.app", "TextView", Map.of("class", "android.widget.TextView"));
+        var otherRoot = node("com.other", "Button", Map.of("class", "Button"));
+
+        var snapshot = new AccessibilitySnapshotCollector().collect(
+                List.of(
+                        window(11, 3, 0, null, "Overlay", "com.app", overlayRoot, List.of()),
+                        window(10, 1, 0, null, "Main", "com.app", mainRoot, List.of()),
+                        window(12, 2, 0, null, "Other", "com.other", otherRoot, List.of())),
+                new AccessibilitySnapshotCollector.Request(
+                        CaptureScope.PROCESS_WINDOWS, "com.app", "device", 100, 10));
+
+        assertEquals(List.of("a:w:10", "a:w:11"), snapshot.windows().stream().map(w -> w.id()).toList());
+        assertEquals(2, snapshot.windows().size());
+        assertTrue(snapshot.windows().stream().allMatch(w -> w.packageName().equals("com.app")));
+    }
+
+    @Test
     public void reportsDeterministicNodeTruncation() {
         var grandchild = node("com.example", "TextView", Map.of());
         var child = node("com.example", "LinearLayout", Map.of(), grandchild);

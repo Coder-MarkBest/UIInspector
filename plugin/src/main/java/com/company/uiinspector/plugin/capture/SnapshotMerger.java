@@ -15,11 +15,11 @@ public final class SnapshotMerger {
             InspectionSnapshot enhanced,
             Screenshot screenshot,
             List<ProcessInfo> processes,
-            Diagnostic degradation) {
+            List<Diagnostic> degradation) {
         InspectionSnapshot tree = enhanced == null ? semantic : enhanced;
         List<Diagnostic> diagnostics = new ArrayList<>(semantic.diagnostics());
         if (enhanced != null) diagnostics.addAll(enhanced.diagnostics());
-        if (degradation != null) diagnostics.add(degradation);
+        if (degradation != null) diagnostics.addAll(degradation);
         return new InspectionSnapshot(
                 InspectionSnapshot.CURRENT_SCHEMA_VERSION,
                 Math.max(semantic.capturedAtEpochMs(), tree.capturedAtEpochMs()),

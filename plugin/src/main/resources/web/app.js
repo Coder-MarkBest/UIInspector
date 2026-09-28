@@ -278,6 +278,17 @@ async function capture() {
     });
     if (snapshot.error) throw new Error(snapshot.error);
     applySnapshot(snapshot);
+    const hasData = (snapshot.windows ?? []).length > 0 || Object.keys(snapshot.nodes ?? {}).length > 0;
+    if (!hasData) {
+      const accessibilityError = (snapshot.diagnostics ?? []).find(
+        d => d.code === 'accessibility_required' || d.code === 'accessibility_disabled');
+      if (accessibilityError) {
+        fail(new Error(accessibilityError.message || '请在设备设置中开启 UI Inspector Collector 无障碍服务后重试。'));
+        return;
+      }
+      toast('采集完成，但未获取到任何 Window 或 View 节点。请检查无障碍服务是否已开启。', true);
+      return;
+    }
     toast('采集完成');
   } catch (error) {
     fail(error);
@@ -331,6 +342,7 @@ function renderTree() {
   if (!state.snapshot) return;
   const search = elements['tree-search'].value.trim().toLowerCase();
   let visibleCount = 0;
+  const fragment = document.createDocumentFragment();
   for (const window of buildWindowLayers(state.snapshot, state.displayId).slice().reverse()) {
     const group = el('section', 'window-group');
     const windowRow = treeRow(windowLabel(window), `L${window.layer}`, state.selectedWindowId === window.id && !state.selectedNodeId, 0, true);
@@ -339,9 +351,10 @@ function renderTree() {
     if (state.expanded.has(window.id) && window.rootNodeId) {
       appendNode(group, window.rootNodeId, 1, search, new Set());
     }
-    elements.tree.append(group);
+    fragment.append(group);
     visibleCount++;
   }
+  elements.tree.append(fragment);
   elements['tree-count'].textContent = `${visibleCount} W · ${Object.keys(state.snapshot.nodes ?? {}).length} V`;
 }
 
@@ -381,7 +394,16 @@ function renderStage() {
   elements['empty-state'].hidden = hasSnapshot;
   elements['two-d-stage'].hidden = !hasSnapshot || state.stage !== '2d';
   elements['three-d-stage'].hidden = !hasSnapshot || state.stage !== '3d';
-  if (!hasSnapshot) return;
+  if (!hasSnapshot) {
+    // 已采集过但数据为空，更新提示文案
+    if (state.snapshot) {
+      const emptyHeading = elements['empty-state'].querySelector('h2');
+      const emptyDesc = elements['empty-state'].querySelector('p');
+      if (emptyHeading) emptyHeading.textContent = '未获取到 Window 或 View';
+      if (emptyDesc) emptyDesc.textContent = '请确认设备上已开启 UI Inspector Collector 无障碍服务，然后重新采集。';
+    }
+    return;
+  }
   const items = stageItems();
   configureDepth(items);
   if (state.stage === '2d') render2d(); else render3d(items);
@@ -423,6 +445,7 @@ function render2d() {
   elements['secure-screenshot'].textContent = screenshot?.unavailableReason ?? '截图不可用；仍可查看公开的 Window 和节点属性。';
   elements['overlay-layer'].replaceChildren();
   const findingIds = new Set(state.findings.map(value => value.nodeId));
+  const fragment = document.createDocumentFragment();
   for (const node of Object.values(state.snapshot.nodes ?? {})) {
     const window = state.snapshot.windows.find(value => value.id === node.windowId);
     if (!window || window.displayId !== state.displayId || !node.bounds) continue;
@@ -434,8 +457,9 @@ function render2d() {
     box.style.top = `${(node.bounds.top - bounds.top) * ratio}px`;
     box.style.width = `${Math.max(2, (node.bounds.right - node.bounds.left) * ratio)}px`;
     box.style.height = `${Math.max(2, (node.bounds.bottom - node.bounds.top) * ratio)}px`;
-    elements['overlay-layer'].append(box);
+    fragment.append(box);
   }
+  elements['overlay-layer'].append(fragment);
   applyTwoDTransform();
 }
 
@@ -449,9 +473,12 @@ function render3d(items) {
   const height = Math.max(bounds.bottom - bounds.top, 1);
   const findingIds = new Set(state.findings.map(value => value.nodeId));
   const levels = [...new Set(items.map(item => Number(item.depth ?? item.layer)))].sort((a, b) => a - b);
+  const depthSequence = new Map();
   for (const item of filtered) {
     const level = Number(item.depth ?? item.layer);
-    const z = levels.indexOf(level) * 34;
+    const offset = depthSequence.get(level) ?? 0;
+    depthSequence.set(level, offset + 1);
+    const z = levels.indexOf(level) * 34 + offset * 2;
     const windowMode = state.threeMode === 'windows';
     const plane = el(windowMode ? 'div' : 'button', `layer-plane${windowMode ? ' window-plane' : ''}`);
     if (windowMode) {
@@ -844,6 +871,7 @@ function selectNodeId(id, revealTree = false) {
   state = { ...state, ...selection };
   render();
   if (revealTree) revealTreeNode(id);
+  clearHighlightOnDevice();
   highlightOnDevice();
 }
 

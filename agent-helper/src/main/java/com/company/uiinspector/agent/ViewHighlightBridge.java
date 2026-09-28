@@ -27,6 +27,7 @@ public final class ViewHighlightBridge {
         Runnable task = () -> {
             try {
                 if (nodeId != null && !nodeId.isEmpty()) {
+                    clearAllHighlights(roots);
                     View target = ViewTargetResolver.resolveNode(roots, nodeId);
                     if (target.getWidth() > 0 && target.getHeight() > 0) {
                         float density = target.getResources().getDisplayMetrics().density;

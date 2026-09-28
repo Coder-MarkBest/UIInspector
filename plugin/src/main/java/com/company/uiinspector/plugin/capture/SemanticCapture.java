@@ -39,10 +39,10 @@ public final class SemanticCapture {
         if (scope == CaptureScope.TARGET_PROCESS && packageName != null) {
             uri.append("&package=").append(URLEncoder.encode(packageName, StandardCharsets.UTF_8));
         }
-        uri.append("&maxNodes=10000&maxDepth=200");
+        uri.append("&maxNodes=5000&maxDepth=200");
         var result = adb.run(List.of(
                         "-s", serial, "exec-out", "content", "read", "--uri", uri.toString()),
-                Duration.ofSeconds(30)).requireSuccess("Semantic UI capture");
+                Duration.ofSeconds(15)).requireSuccess("Semantic UI capture");
         InspectionSnapshot snapshot = SnapshotJson.decode(
                 AdbJsonOutput.payload(result.stdout(), "Semantic UI capture"));
         return new InspectionSnapshot(

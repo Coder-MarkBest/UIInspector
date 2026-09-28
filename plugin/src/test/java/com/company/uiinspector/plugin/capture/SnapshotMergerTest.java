@@ -41,7 +41,7 @@ class SnapshotMergerTest {
         var semantic = snapshot(CaptureSource.SEMANTIC, "semantic", List.of());
         var fallback = new Diagnostic("WARN", "enhanced_unavailable", "Target is not debuggable.");
 
-        var merged = SnapshotMerger.merge(semantic, null, null, List.of(), fallback);
+        var merged = SnapshotMerger.merge(semantic, null, null, List.of(), List.of(fallback));
 
         assertEquals(CaptureSource.SEMANTIC, merged.windows().get(0).source());
         assertEquals("enhanced_unavailable", merged.diagnostics().get(0).code());

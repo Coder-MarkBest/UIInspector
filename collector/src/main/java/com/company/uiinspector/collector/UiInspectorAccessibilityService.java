@@ -52,27 +52,41 @@ public final class UiInspectorAccessibilityService extends AccessibilityService 
     }
 
     private void applyHighlight(int left, int top, int right, int bottom) {
-        clearHighlightNow();
-        if (overlayWm == null) return;
-        android.view.View view = new android.view.View(this);
-        int borderPx = Math.max(2, Math.round(3 * getResources().getDisplayMetrics().density));
-        android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
-        border.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
-        border.setStroke(borderPx, 0xFF00BFFF);
-        border.setColor(0x00000000);
-        view.setBackground(border);
+        try {
+            clearHighlightNow();
+            if (overlayWm == null) return;
+            int width = Math.max(1, right - left);
+            int height = Math.max(1, bottom - top);
+            android.view.View view = new android.view.View(this);
+            int borderPx = Math.max(2, Math.round(3 * getResources().getDisplayMetrics().density));
+            android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
+            border.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+            border.setStroke(borderPx, 0xFF00BFFF);
+            border.setColor(0x00000000);
+            view.setBackground(border);
 
-        android.view.WindowManager.LayoutParams params = new android.view.WindowManager.LayoutParams(
-                right - left, bottom - top,
-                left, top,
-                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                        | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                android.graphics.PixelFormat.TRANSLUCENT);
-        overlayWm.addView(view, params);
-        highlightOverlay = view;
-        overlayParams = params;
+            int type;
+            if (Build.VERSION.SDK_INT >= 30) {
+                type = android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY;
+            } else {
+                // 旧设备回退到 TYPE_APPLICATION_OVERLAY
+                type = 2038; // TYPE_APPLICATION_OVERLAY
+            }
+            android.view.WindowManager.LayoutParams params = new android.view.WindowManager.LayoutParams(
+                    width, height,
+                    left, top,
+                    type,
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    android.graphics.PixelFormat.TRANSLUCENT);
+            overlayWm.addView(view, params);
+            highlightOverlay = view;
+            overlayParams = params;
+        } catch (RuntimeException ignored) {
+            // TYPE_ACCESSIBILITY_OVERLAY 在某些定制 ROM 上不可用；
+            // 高亮失败不影响核心采集功能。
+        }
     }
 
     void clearHighlight() {
@@ -108,7 +122,7 @@ public final class UiInspectorAccessibilityService extends AccessibilityService 
             }
         });
         try {
-            if (!latch.await(15, TimeUnit.SECONDS)) {
+            if (!latch.await(8, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Timed out waiting for accessibility capture.");
             }
         } catch (InterruptedException error) {

@@ -21,18 +21,26 @@ import com.company.uiinspector.protocol.ProcessInfo;
 import com.company.uiinspector.protocol.PropertyGroup;
 import com.company.uiinspector.protocol.PropertyValue;
 import com.company.uiinspector.protocol.Rect;
+import com.company.uiinspector.protocol.Screenshot;
 import com.company.uiinspector.protocol.SnapshotJson;
 import com.company.uiinspector.protocol.UiNode;
 import com.company.uiinspector.protocol.WindowSnapshot;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 public final class InspectorApi implements InspectorServer.Api {
     private static final Gson GSON = new Gson();
@@ -48,6 +56,11 @@ public final class InspectorApi implements InspectorServer.Api {
     private final List<String> projectPackages;
     private final AtomicReference<InspectionSnapshot> current = new AtomicReference<>();
     private final AtomicReference<String> status = new AtomicReference<>("idle");
+    private final ExecutorService captureExecutor = Executors.newFixedThreadPool(2, r -> {
+        Thread thread = new Thread(r, "uiinspector-capture");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public InspectorApi(
             AdbClient adb,
@@ -135,13 +148,27 @@ public final class InspectorApi implements InspectorServer.Api {
             }
             CaptureScope scope = "global".equalsIgnoreCase(request.scope)
                     ? CaptureScope.GLOBAL : CaptureScope.TARGET_PROCESS;
-            collector.install(request.serial);
+            boolean collectorInstalled = collector.install(request.serial);
 
             List<RunningProcess> running = processes.list(request.serial);
             RunningProcess target = scope == CaptureScope.TARGET_PROCESS ? findTarget(running, request) : null;
             String packageName = target == null ? null : target.packageName();
-            InspectionSnapshot semanticSnapshot = semantic.capture(request.serial, scope, packageName);
-            var screenshot = screenshots.capture(request.serial);
+
+            // 并行采集 semantic 和 screenshot，两者互不依赖
+            Future<InspectionSnapshot> semanticFuture = captureExecutor.submit(
+                    () -> semantic.capture(request.serial, scope, packageName));
+            Future<Screenshot> screenshotFuture = captureExecutor.submit(
+                    () -> screenshots.capture(request.serial));
+            InspectionSnapshot semanticSnapshot;
+            Screenshot screenshot;
+            try {
+                semanticSnapshot = semanticFuture.get(35, TimeUnit.SECONDS);
+                screenshot = screenshotFuture.get(25, TimeUnit.SECONDS);
+            } catch (ExecutionException e) {
+                if (e.getCause() instanceof IOException io) throw io;
+                if (e.getCause() instanceof InterruptedException ie) throw ie;
+                throw new IOException("Parallel capture failed.", e.getCause());
+            }
             List<ProcessInfo> processInfo = new ArrayList<>();
             InspectionSnapshot enhanced = null;
             Diagnostic degradation = null;
@@ -164,8 +191,13 @@ public final class InspectorApi implements InspectorServer.Api {
                     }
                 }
             }
+            Diagnostic installWarning = collectorInstalled
+                    ? new Diagnostic("WARN", "collector_updated",
+                            "Collector APK 已更新。如视图树为空，请确认设备上的 UI Inspector Collector 无障碍服务已开启。")
+                    : null;
             InspectionSnapshot merged = SnapshotMerger.merge(
-                    semanticSnapshot, enhanced, screenshot, processInfo, degradation);
+                    semanticSnapshot, enhanced, screenshot, processInfo,
+                    Stream.of(degradation, installWarning).filter(Objects::nonNull).toList());
             current.set(merged);
             status.set("ready");
             return SnapshotJson.encode(merged);
@@ -308,8 +340,26 @@ public final class InspectorApi implements InspectorServer.Api {
                         }
                     }
                 }
+            } else {
+                // nodeId is empty — clear JVMTI highlight.
+                if (snapshot.scope() == CaptureScope.TARGET_PROCESS) {
+                    List<RunningProcess> running = processes.list(snapshot.deviceSerial());
+                    RunningProcess process = running.stream()
+                            .filter(value -> snapshot.targetPackage().equals(value.packageName()))
+                            .filter(value -> snapshot.targetProcess().equals(value.processName()))
+                            .findFirst()
+                            .orElse(null);
+                    if (process != null && processes.isDebuggable(snapshot.deviceSerial(), process.packageName())) {
+                        try {
+                            agents.highlight(snapshot.deviceSerial(), process,
+                                    deviceAbi(snapshot.deviceSerial()), "");
+                        } catch (Exception ignored) {
+                            // Highlight clear is non-critical.
+                        }
+                    }
+                }
             }
-            // Semantic fallback: draw an overlay via AccessibilityService using screen coordinates.
+            // Semantic path: show overlay or clear.
             if (snapshot.deviceSerial() != null) {
                 semantic.highlight(snapshot.deviceSerial(), bounds);
             }

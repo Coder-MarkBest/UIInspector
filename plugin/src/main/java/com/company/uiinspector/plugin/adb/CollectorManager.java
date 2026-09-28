@@ -21,14 +21,19 @@ public final class CollectorManager {
         this.collectorApk = collectorApk;
     }
 
-    public void install(String serial) throws IOException, InterruptedException {
+    /**
+     * Ensures the collector APK is installed at the required version.
+     * @return true if a fresh install or upgrade was performed.
+     */
+    public boolean install(String serial) throws IOException, InterruptedException {
         CommandResult installed = adb.run(List.of(
                 "-s", serial, "shell", "dumpsys", "package", PACKAGE_NAME), COMMAND_TIMEOUT);
         if (installed.exitCode() == 0 && CURRENT_VERSION.matcher(installed.stdout()).find()) {
-            return;
+            return false;
         }
         adb.run(List.of("-s", serial, "install", "-r", "-t", collectorApk.toString()), INSTALL_TIMEOUT)
                 .requireSuccess("Collector installation");
+        return true;
     }
 
     public void openAccessibilitySettings(String serial) throws IOException, InterruptedException {

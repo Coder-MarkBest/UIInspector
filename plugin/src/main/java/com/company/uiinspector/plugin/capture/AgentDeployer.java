@@ -12,15 +12,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public final class AgentDeployer {
     private static final Logger LOG = Logger.getLogger(AgentDeployer.class.getName());
-    private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(20);
-    private static final Duration ATTACH_TIMEOUT = Duration.ofSeconds(60);
-    private static final Duration CAPTURE_TIMEOUT = Duration.ofSeconds(45);
+    private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration ATTACH_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration CAPTURE_TIMEOUT = Duration.ofSeconds(20);
+
+    private static final ExecutorService CLEANUP = Executors.newCachedThreadPool(r -> {
+        Thread thread = new Thread(r, "uiinspector-agent-cleanup");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final AdbClient adb;
     private final AgentPayloads payloads;
@@ -206,7 +214,8 @@ public final class AgentDeployer {
                     + " (pid=" + process.pid() + "): " + error.getMessage(), error);
             throw new EnhancedCaptureUnavailableException(error.getMessage(), error);
         } finally {
-            cleanupCapture(serial, packageName, captureId, tempHelper, tempAgent, app);
+            AppDir cleanupApp = app;
+            CLEANUP.submit(() -> cleanupCapture(serial, packageName, captureId, tempHelper, tempAgent, cleanupApp));
         }
     }
 
@@ -267,7 +276,8 @@ public final class AgentDeployer {
         } catch (IOException error) {
             LOG.warning("Highlight failed for " + process.processName() + ": " + error.getMessage());
         } finally {
-            cleanupHighlight(serial, captureId, tempHelper, tempAgent, app);
+            AppDir cleanupApp = app;
+            CLEANUP.submit(() -> cleanupHighlight(serial, captureId, tempHelper, tempAgent, cleanupApp));
         }
     }
 
@@ -424,10 +434,14 @@ public final class AgentDeployer {
                     + " (pid=" + process.pid() + "): " + error.getMessage(), error);
             throw new EnhancedCaptureUnavailableException(error.getMessage(), error);
         } finally {
-            cleanupMutation(serial, packageName, captureId, tempHelper, tempAgent, tempCommand, app);
-            if (localCommand != null) {
-                try { Files.deleteIfExists(localCommand); } catch (IOException ignored) {}
-            }
+            AppDir cleanupApp = app;
+            Path local = localCommand;
+            CLEANUP.submit(() -> {
+                cleanupMutation(serial, packageName, captureId, tempHelper, tempAgent, tempCommand, cleanupApp);
+                if (local != null) {
+                    try { Files.deleteIfExists(local); } catch (IOException ignored) {}
+                }
+            });
         }
     }
 

@@ -9,6 +9,7 @@ import {
   filterDepth,
   flattenProperties,
   groupProperties,
+  initialExpandedSet,
   isDragGesture,
   mutationKey,
   outsideViewport,
@@ -24,6 +25,7 @@ import {
   selectNode,
   screenshotSlice,
   shouldAutoCapture,
+  toggleExpanded,
   windowViewZIndex
 } from './inspector-core.js';
 
@@ -305,7 +307,7 @@ function applySnapshot(snapshot) {
   const displays = [...new Set((snapshot.windows ?? []).map(window => window.displayId))].sort((a, b) => a - b);
   elements['display-select'].replaceChildren(...(displays.length ? displays : [0]).map(value => option(String(value), String(value))));
   state.displayId = displays[0] ?? 0;
-  state.expanded = new Set((snapshot.windows ?? []).map(window => window.id));
+  state.expanded = initialExpandedSet(snapshot);
   chooseDefaultSelection();
   render();
 }
@@ -345,10 +347,13 @@ function renderTree() {
   const fragment = document.createDocumentFragment();
   for (const window of buildWindowLayers(state.snapshot, state.displayId).slice().reverse()) {
     const group = el('section', 'window-group');
-    const windowRow = treeRow(windowLabel(window), `L${window.layer}`, state.selectedWindowId === window.id && !state.selectedNodeId, 0, true);
-    windowRow.addEventListener('click', () => selectWindow(window.id));
+    const expandable = Boolean(window.rootNodeId);
+    const expanded = Boolean(search) || state.expanded.has(window.id);
+    const windowRow = treeRow(windowLabel(window), `L${window.layer}`, state.selectedWindowId === window.id && !state.selectedNodeId, 0, true, expandable, expanded);
+    windowRow.dataset.windowId = window.id;
+    windowRow.addEventListener('click', event => onTreeRowClick(event, () => selectWindow(window.id), window.id, expandable));
     group.append(windowRow);
-    if (state.expanded.has(window.id) && window.rootNodeId) {
+    if (expanded && window.rootNodeId) {
       appendNode(group, window.rootNodeId, 1, search, new Set());
     }
     fragment.append(group);
@@ -366,27 +371,43 @@ function appendNode(container, id, indent, search, visited) {
   const matches = !search || nodeSearchText(node).includes(search) || descendantsMatch(node, search, new Set());
   if (!matches) return;
   const properties = flattenProperties(node);
+  const expandable = (node.childIds?.length ?? 0) > 0;
+  const expanded = Boolean(search) || state.expanded.has(id);
   const label = node.className?.split('.').at(-1) ?? node.id;
   const detail = node.resourceId?.split('/').at(-1) ?? node.text ?? '';
-  const row = treeRow(`${label}${detail ? ` · ${detail}` : ''}`, `D${node.depth}`, state.selectedNodeId === id, indent, false);
+  const row = treeRow(`${label}${detail ? ` · ${detail}` : ''}`, `D${node.depth}`, state.selectedNodeId === id, indent, false, expandable, expanded);
   row.title = `${node.className ?? ''}\n${node.resourceId ?? ''}\n${node.id}`;
   row.dataset.nodeId = id;
-  row.addEventListener('click', () => selectNodeId(id));
+  row.addEventListener('click', event => onTreeRowClick(event, () => selectNodeId(id), id, expandable));
   container.append(row);
-  for (const child of node.childIds ?? []) appendNode(container, child, indent + 1, search, visited);
+  if (expanded) {
+    for (const child of node.childIds ?? []) appendNode(container, child, indent + 1, search, visited);
+  }
 }
 
-function treeRow(label, meta, selected, indent, window) {
+function treeRow(label, meta, selected, indent, window, expandable, expanded) {
   const button = el('button', `tree-row${window ? ' window-row' : ''}`);
   button.type = 'button';
   button.setAttribute('role', 'treeitem');
   button.setAttribute('aria-selected', String(selected));
+  if (expandable) button.setAttribute('aria-expanded', String(expanded));
   button.style.paddingLeft = `${5 + indent * 12}px`;
-  const caret = el('span', 'tree-caret', window ? '▾' : '·');
+  const caretGlyph = !expandable ? '·' : expanded ? '▾' : '▸';
+  const caret = el('span', 'tree-caret', caretGlyph);
+  if (expandable) caret.classList.add('expandable');
   const name = el('span', 'tree-label', label);
   const suffix = el('span', 'tree-meta', meta);
   button.append(caret, name, suffix);
   return button;
+}
+
+function onTreeRowClick(event, select, id, expandable) {
+  if (expandable && event.target.closest('.tree-caret')) {
+    state.expanded = toggleExpanded(state.expanded, id);
+    renderTree();
+    return;
+  }
+  select();
 }
 
 function renderStage() {
@@ -868,6 +889,7 @@ function selectWindow(id) {
 function selectNodeId(id, revealTree = false) {
   const selection = selectNode(state.snapshot, state, id);
   if (!selection) return;
+  revealAncestors(id);
   state = { ...state, ...selection };
   render();
   if (revealTree) revealTreeNode(id);
@@ -904,6 +926,19 @@ async function clearHighlightOnDevice() {
   } catch (ignored) {
     // Highlight is non-critical; suppress errors.
   }
+}
+
+function revealAncestors(id) {
+  const node = state.snapshot?.nodes?.[id];
+  if (!node) return;
+  const expanded = new Set(state.expanded ?? []);
+  expanded.add(node.windowId);
+  let current = node;
+  while (current?.parentId && state.snapshot.nodes[current.parentId]) {
+    current = state.snapshot.nodes[current.parentId];
+    expanded.add(current.id);
+  }
+  state.expanded = expanded;
 }
 
 function revealTreeNode(id) {

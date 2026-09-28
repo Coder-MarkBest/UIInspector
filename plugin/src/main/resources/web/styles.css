@@ -101,6 +101,8 @@ select, input[type="search"] { height: 30px; padding: 0 9px; min-width: 0; }
 .tree-row[aria-selected="true"] { background: var(--blue-soft); box-shadow: inset 2px 0 var(--blue); }
 .tree-row.window-row { font-weight: 600; }
 .tree-caret { color: var(--muted); font-size: 9px; flex-shrink: 0; }
+.tree-caret.expandable { cursor: pointer; }
+.tree-caret.expandable:hover { color: var(--blue); }
 .tree-label { font: 10px var(--mono); white-space: nowrap; }
 .tree-meta { color: var(--muted); font: 9px var(--mono); white-space: nowrap; flex-shrink: 0; }
 

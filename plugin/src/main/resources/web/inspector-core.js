@@ -199,6 +199,20 @@ export function selectNode(snapshot, state, nodeId) {
   };
 }
 
+export function initialExpandedSet(snapshot) {
+  const expanded = new Set((snapshot?.windows ?? []).map(window => window.id));
+  for (const node of Object.values(snapshot?.nodes ?? {})) {
+    if (node && (node.childIds?.length ?? 0) > 0) expanded.add(node.id);
+  }
+  return expanded;
+}
+
+export function toggleExpanded(expanded, id) {
+  const next = new Set(expanded ?? []);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  return next;
+}
+
 export function propertyEditorModel(property) {
   if (!property?.editor) return null;
   const choices = Array.isArray(property.editor.choices) ? property.editor.choices.slice() : [];

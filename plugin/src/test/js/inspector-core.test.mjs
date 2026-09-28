@@ -10,6 +10,7 @@ import {
   evaluateRules,
   filterDepth,
   groupProperties,
+  initialExpandedSet,
   isDragGesture,
   mutationKey,
   outsideViewport,
@@ -25,6 +26,7 @@ import {
   selectNode,
   screenshotSlice,
   shouldAutoCapture,
+  toggleExpanded,
   windowViewZIndex
 } from '../../main/resources/web/inspector-core.js';
 
@@ -375,3 +377,21 @@ function propertyGroup(properties) {
     properties: Object.fromEntries(Object.entries(properties).map(([name, value]) => [name, { value, source: 'TEST' }]))
   };
 }
+
+test('initial expanded set opens every Window and every parent View', () => {
+  const expanded = initialExpandedSet(snapshot());
+  assert.deepEqual(
+    ['activity', 'dialog', 'cluster'].every(id => expanded.has(id)),
+    true
+  );
+  assert.equal(expanded.has('root'), true);
+  assert.equal(expanded.has('child'), false);
+});
+
+test('toggle expanded collapses and re-expands a Window or View', () => {
+  let expanded = initialExpandedSet(snapshot());
+  expanded = toggleExpanded(expanded, 'root');
+  assert.equal(expanded.has('root'), false);
+  expanded = toggleExpanded(expanded, 'root');
+  assert.equal(expanded.has('root'), true);
+});

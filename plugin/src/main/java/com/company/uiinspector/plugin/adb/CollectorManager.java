@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 public final class CollectorManager {
     public static final String PACKAGE_NAME = "com.company.uiinspector.collector";
-    private static final int VERSION_CODE = 2;
+    private static final int VERSION_CODE = 3;
     private static final Pattern CURRENT_VERSION = Pattern.compile("\\bversionCode=" + VERSION_CODE + "\\b");
     private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(2);
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(20);
@@ -38,7 +38,7 @@ public final class CollectorManager {
             verifiedAt.put(serial, System.nanoTime());
             return false;
         }
-        adb.run(List.of("-s", serial, "install", "-r", "-t", collectorApk.toString()), INSTALL_TIMEOUT)
+        adb.run(List.of("-s", serial, "install", "-r", "-t", collectorApk.toString().replace('\\', '/')), INSTALL_TIMEOUT)
                 .requireSuccess("Collector installation");
         verifiedAt.put(serial, System.nanoTime());
         return true;

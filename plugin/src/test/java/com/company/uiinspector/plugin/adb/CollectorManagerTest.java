@@ -28,7 +28,7 @@ class CollectorManagerTest {
 
     @Test
     void doesNotReinstallCurrentCollectorAndRestartItsAccessibilityService() throws Exception {
-        var adb = new RecordingAdb("versionCode=1 minSdk=28 targetSdk=36");
+        var adb = new RecordingAdb("versionCode=3 minSdk=28 targetSdk=36");
         var manager = new CollectorManager(adb, Path.of("payload", "collector.apk"));
 
         manager.install("emulator-5554");

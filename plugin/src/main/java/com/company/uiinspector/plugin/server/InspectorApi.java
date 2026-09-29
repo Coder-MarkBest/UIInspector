@@ -26,9 +26,13 @@ import com.company.uiinspector.protocol.UiNode;
 import com.company.uiinspector.protocol.WindowSnapshot;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +47,11 @@ import java.util.stream.Stream;
 
 public final class InspectorApi implements InspectorServer.Api {
     private static final Gson GSON = new Gson();
+
+    private static final Pattern WINDOW_PATTERN =
+            Pattern.compile("Window\\{(.*)\\}");
+    private static final Pattern ACTIVITY_PATTERN =
+            Pattern.compile("ACTIVITY\\s+([\\w./]+)");
 
     private final AdbClient adb;
     private final DeviceCatalog devices;
@@ -138,6 +147,88 @@ public final class InspectorApi implements InspectorServer.Api {
     }
 
     @Override
+    public String catalog(Map<String, String> query) {
+        String serial = query.get("serial");
+        if (serial == null || serial.isBlank()) return "[]";
+        String scope = query.getOrDefault("scope", "");
+        try {
+            List<Map<String, Object>> items = new ArrayList<>();
+            if ("process".equalsIgnoreCase(scope)) {
+                for (ProcessInfo process : processes.listForUi(serial, projectPackages)) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("type", "process");
+                    item.put("id", Integer.toString(process.pid()));
+                    item.put("pid", process.pid());
+                    item.put("packageName", process.packageName());
+                    item.put("processName", process.processName());
+                    item.put("label", process.processName());
+                    items.add(item);
+                }
+            } else if ("window".equalsIgnoreCase(scope)) {
+                items.addAll(listWindows(serial));
+            } else if ("activity".equalsIgnoreCase(scope)) {
+                items.addAll(listActivities(serial));
+            }
+            return GSON.toJson(items);
+        } catch (Exception error) {
+            return error(error);
+        }
+    }
+
+    private List<Map<String, Object>> listWindows(String serial) throws Exception {
+        String output = shell(serial, "dumpsys", "window", "windows");
+        List<Map<String, Object>> items = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (String line : output.split("\n")) {
+            Matcher matcher = WINDOW_PATTERN.matcher(line);
+            if (matcher.find()) {
+                String content = matcher.group(1).trim();
+                if (content.isEmpty()) continue;
+                String[] parts = content.split("\\s+");
+                String key = parts[parts.length - 1];
+                if (!seen.add(key)) continue;
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("type", "window");
+                item.put("id", key);
+                item.put("label", content);
+                item.put("title", content);
+                item.put("processName", key);
+                items.add(item);
+            }
+        }
+        return items;
+    }
+
+    private List<Map<String, Object>> listActivities(String serial) throws Exception {
+        String output = shell(serial, "dumpsys", "activity", "activities");
+        List<Map<String, Object>> items = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (String line : output.split("\n")) {
+            Matcher matcher = ACTIVITY_PATTERN.matcher(line);
+            if (matcher.find()) {
+                String name = matcher.group(1);
+                if (!seen.add(name)) continue;
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("type", "activity");
+                item.put("id", name);
+                item.put("label", name);
+                items.add(item);
+            }
+        }
+        return items;
+    }
+
+    private String shell(String serial, String... args) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add("-s");
+        command.add(serial);
+        command.add("shell");
+        command.addAll(List.of(args));
+        return adb.run(command, Duration.ofSeconds(15))
+                .requireSuccess("Running shell command").stdout();
+    }
+
+    @Override
     public synchronized String capture(String body, Map<String, String> query) {
         status.set("capturing");
         try {
@@ -162,9 +253,12 @@ public final class InspectorApi implements InspectorServer.Api {
             RunningProcess target = needsProcess ? findTarget(running, request) : null;
             String packageName = target == null ? null : target.packageName();
 
-            // 提前判定增强采集是否可用，以便 semantic/screenshot/enhanced 三路并行
-            // PROCESS_WINDOWS 是语义按包名聚合，不启用 JVMTI 增强采集
-            boolean runEnhanced = scope == CaptureScope.TARGET_PROCESS;
+            // 提前判定增强采集是否可用，以便 semantic/screenshot/enhanced 三路并行。
+            // TARGET_PROCESS 与 PROCESS_WINDOWS（进程 Window）都优先走 JVMTI 真实 View 树：
+            // 它通过 WindowManagerGlobal 枚举进程内全部 Window（含 addView 添加的自定义 View），
+            // 并把来源标记为 Real View；不可调试或附加失败时再降级为语义采集。
+            boolean runEnhanced = scope == CaptureScope.TARGET_PROCESS
+                    || scope == CaptureScope.PROCESS_WINDOWS;
             boolean debuggableTarget = false;
             String abi = null;
             if (runEnhanced && target != null) {
@@ -180,9 +274,11 @@ public final class InspectorApi implements InspectorServer.Api {
             Future<Screenshot> screenshotFuture = captureExecutor.submit(
                     () -> screenshots.capture(request.serial));
             Future<InspectionSnapshot> enhancedFuture = null;
-            if (debuggableTarget && abi != null && !abi.isBlank()) {
+            final RunningProcess enhancedTarget = target;
+            final String enhancedAbi = abi;
+            if (debuggableTarget && enhancedAbi != null && !enhancedAbi.isBlank()) {
                 enhancedFuture = captureExecutor.submit(
-                        () -> agents.capture(request.serial, target, abi));
+                        () -> agents.capture(request.serial, enhancedTarget, enhancedAbi));
             }
 
             InspectionSnapshot semanticSnapshot;
@@ -202,7 +298,7 @@ public final class InspectorApi implements InspectorServer.Api {
                     : null;
             if (enhancedFuture != null) {
                 try {
-                    enhanced = enhancedFuture.get(50, TimeUnit.SECONDS);
+                    enhanced = enhancedFuture.get(75, TimeUnit.SECONDS);
                 } catch (ExecutionException e) {
                     Throwable cause = e.getCause();
                     degradation = new Diagnostic("WARN", "enhanced_unavailable",
@@ -225,12 +321,92 @@ public final class InspectorApi implements InspectorServer.Api {
             InspectionSnapshot merged = SnapshotMerger.merge(
                     semanticSnapshot, enhanced, screenshot, processInfo,
                     Stream.of(degradation, installWarning).filter(Objects::nonNull).toList());
-            current.set(merged);
+            InspectionSnapshot filtered = filterSnapshot(merged, request.windowIds, request.activities);
+            current.set(filtered);
             status.set("ready");
-            return SnapshotJson.encode(merged);
+            return SnapshotJson.encode(filtered);
         } catch (Exception error) {
             status.set("error");
             return error(error);
+        }
+    }
+
+    private static InspectionSnapshot filterSnapshot(InspectionSnapshot snapshot,
+            List<String> windowIds, List<String> activities) {
+        if (isEmptySelection(windowIds) && isEmptySelection(activities)) {
+            return snapshot;
+        }
+        List<WindowSnapshot> keptWindows = new ArrayList<>();
+        Set<String> keptWindowIds = new HashSet<>();
+        for (WindowSnapshot window : snapshot.windows()) {
+            boolean keep;
+            if (!isEmptySelection(windowIds)) {
+                keep = matchesAny(window, windowIds);
+            } else {
+                keep = matchesAny(window, activities);
+            }
+            if (keep) {
+                keptWindows.add(window);
+                if (window.id() != null) keptWindowIds.add(window.id());
+            }
+        }
+        Map<String, UiNode> keptNodes = new LinkedHashMap<>();
+        for (Map.Entry<String, UiNode> entry : snapshot.nodes().entrySet()) {
+            UiNode node = entry.getValue();
+            if (node.windowId() != null && keptWindowIds.contains(node.windowId())) {
+                keptNodes.put(entry.getKey(), node);
+                keepAncestors(snapshot.nodes(), node, keptNodes);
+            }
+        }
+        return new InspectionSnapshot(
+                snapshot.schemaVersion(),
+                snapshot.capturedAtEpochMs(),
+                snapshot.deviceSerial(),
+                snapshot.scope(),
+                snapshot.targetPackage(),
+                snapshot.targetProcess(),
+                snapshot.processes(),
+                keptWindows,
+                keptNodes,
+                snapshot.diagnostics(),
+                snapshot.screenshot());
+    }
+
+    private static boolean isEmptySelection(List<String> selection) {
+        if (selection == null || selection.isEmpty()) return true;
+        for (String value : selection) {
+            if (value != null && !value.isBlank() && !"__all__".equals(value)) return false;
+        }
+        return true;
+    }
+
+    private static boolean matchesAny(WindowSnapshot window, List<String> selection) {
+        if (isEmptySelection(selection)) return true;
+        for (String query : selection) {
+            if (query == null || query.isBlank() || "__all__".equals(query)) continue;
+            if (matches(window.id(), query)) return true;
+            if (matches(window.title(), query)) return true;
+            if (matches(window.packageName(), query)) return true;
+            if (matches(window.processName(), query)) return true;
+        }
+        return false;
+    }
+
+    private static boolean matches(String value, String query) {
+        if (value == null) return false;
+        return value.equals(query) || value.contains(query) || query.contains(value);
+    }
+
+    private static void keepAncestors(Map<String, UiNode> nodes, UiNode node,
+            Map<String, UiNode> output) {
+        String parentId = node.parentId();
+        int guard = 0;
+        while (parentId != null && !parentId.isBlank()
+                && !output.containsKey(parentId) && guard++ < 64) {
+            UiNode parent = nodes.get(parentId);
+            if (parent == null) break;
+            output.put(parentId, parent);
+            parentId = parent.parentId();
         }
     }
 
@@ -396,6 +572,111 @@ public final class InspectorApi implements InspectorServer.Api {
         }
     }
 
+    @Override
+    public synchronized String jvmtiDiag(String body, Map<String, String> query) {
+        try {
+            JvmtiDiagRequest request = GSON.fromJson(body, JvmtiDiagRequest.class);
+            if (request == null || request.serial == null || request.serial.isBlank()) {
+                throw new IllegalArgumentException("Select an Android device before JVMTI diagnosis.");
+            }
+            List<RunningProcess> running = processes.list(request.serial);
+            RunningProcess target = findTarget(running, request.packageName, request.processName, request.pid);
+            boolean debuggable = processes.isDebuggable(request.serial, target.packageName());
+            String abi = deviceAbi(request.serial);
+            var diagnostic = agents.diagnoseJvmti(request.serial, target, abi);
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("ok", diagnostic.ok());
+            response.put("serial", request.serial);
+            response.put("pid", target.pid());
+            response.put("packageName", target.packageName());
+            response.put("processName", target.processName());
+            response.put("debuggable", debuggable);
+            response.put("abi", abi);
+            response.put("status", diagnostic.status());
+            response.put("stage", diagnostic.stage());
+            response.put("snapshotWritten", diagnostic.snapshotWritten());
+            response.put("steps", diagnostic.steps());
+            response.put("logcat", diagnostic.logcat());
+            return GSON.toJson(response);
+        } catch (Exception error) {
+            status.set("error");
+            return error(error);
+        }
+    }
+
+
+    @Override
+    public synchronized String debugRestart(String body, Map<String, String> query) {
+        try {
+            DebugRestartRequest request = GSON.fromJson(body, DebugRestartRequest.class);
+            if (request == null || request.serial == null || request.serial.isBlank()) {
+                throw new IllegalArgumentException("Select an Android device before restarting for JVMTI.");
+            }
+            require(request.packageName, "Target package is missing.");
+            List<RunningProcess> running = processes.list(request.serial);
+            RunningProcess target = findTarget(running, request.packageName, request.processName, request.pid);
+            String packageName = target.packageName();
+            String processName = target.processName();
+            int oldPid = target.pid();
+
+            // 标记为 debug-app（不带 -w，避免等待调试器挂起），随后强停并按 launcher 重启。
+            // 这样进程会以 debuggable runtime 启动，`cmd activity attach-agent` 才能真正执行 Agent_OnAttach。
+            adb.run(List.of("-s", request.serial, "shell", "am", "set-debug-app", packageName),
+                    Duration.ofSeconds(15))
+                    .requireSuccess("Marking package debuggable");
+            adb.run(List.of("-s", request.serial, "shell", "am", "force-stop", packageName),
+                    Duration.ofSeconds(15))
+                    .requireSuccess("Stopping target package");
+            adb.run(List.of("-s", request.serial, "shell", "monkey",
+                            "-p", packageName, "-c", "android.intent.category.LAUNCHER", "1"),
+                    Duration.ofSeconds(20))
+                    .requireSuccess("Launching target package");
+
+            RunningProcess restarted = waitForRestartedProcess(
+                    request.serial, packageName, processName, oldPid);
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("ok", true);
+            response.put("serial", request.serial);
+            response.put("pid", restarted.pid());
+            response.put("packageName", restarted.packageName());
+            response.put("processName", restarted.processName());
+            response.put("debuggable", true);
+            response.put("restarted", true);
+            response.put("message", "Target restarted with a debuggable runtime; JVMTI agent can now attach.");
+            return GSON.toJson(response);
+        } catch (Exception error) {
+            status.set("error");
+            return error(error);
+        }
+    }
+
+    private RunningProcess waitForRestartedProcess(String serial, String packageName,
+            String processName, int oldPid) throws IOException, InterruptedException {
+        String wantedProcess = processName == null || processName.isBlank() ? packageName : processName;
+        long deadline = System.nanoTime() + Duration.ofSeconds(25).toNanos();
+        RunningProcess exact = null;
+        RunningProcess fallback = null;
+        while (System.nanoTime() < deadline) {
+            for (RunningProcess candidate : processes.list(serial)) {
+                if (!candidate.packageName().equals(packageName)) continue;
+                if (candidate.pid() == oldPid) continue;
+                if (fallback == null && candidate.processName().equals(packageName)) fallback = candidate;
+                if (wantedProcess.equals(candidate.processName())) {
+                    exact = candidate;
+                    break;
+                }
+            }
+            if (exact != null) break;
+            Thread.sleep(500);
+        }
+        RunningProcess restarted = exact != null ? exact : fallback;
+        if (restarted == null) {
+            throw new IllegalArgumentException("Timed out waiting for the restarted process: " + wantedProcess);
+        }
+        return restarted;
+    }
+
     private static void validateRequest(MutationRequest request) {
         if (request == null) throw apiFailure("invalid_request", "Mutation request is missing.");
         require(request.serial, "Select an Android device before editing.");
@@ -456,17 +737,22 @@ public final class InspectorApi implements InspectorServer.Api {
     }
 
     private RunningProcess findTarget(List<RunningProcess> running, CaptureRequest request) {
-        if (request.pid > 0) {
-            return running.stream().filter(value -> value.pid() == request.pid).findFirst()
+        return findTarget(running, request.packageName, request.processName, request.pid);
+    }
+
+    private RunningProcess findTarget(List<RunningProcess> running, String packageName, String processName, int pid) {
+        if (pid > 0) {
+            return running.stream().filter(value -> value.pid() == pid).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Selected process is no longer running."));
         }
-        String wanted = request.processName != null ? request.processName
-                : request.packageName != null ? request.packageName : defaultPackage;
+        String wanted = processName != null ? processName
+                : packageName != null ? packageName : defaultPackage;
         if (wanted == null) throw new IllegalArgumentException("Select a target process.");
+        final String wantedFinal = wanted;
         return running.stream()
-                .filter(value -> wanted.equals(value.processName()) || wanted.equals(value.packageName()))
+                .filter(value -> wantedFinal.equals(value.processName()) || wantedFinal.equals(value.packageName()))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Target process is not running: " + wanted));
+                .orElseThrow(() -> new IllegalArgumentException("Target process is not running: " + wantedFinal));
     }
 
     private String deviceAbi(String serial) throws Exception {
@@ -490,6 +776,23 @@ public final class InspectorApi implements InspectorServer.Api {
         String packageName;
         String processName;
         int pid;
+        List<String> windowIds;
+        List<String> activities;
+    }
+
+    private static final class JvmtiDiagRequest {
+        String serial;
+        int pid;
+        String packageName;
+        String processName;
+    }
+
+
+    private static final class DebugRestartRequest {
+        String serial;
+        int pid;
+        String packageName;
+        String processName;
     }
 
     private static final class MutationRequest {

@@ -88,6 +88,13 @@ public final class InspectorServer implements AutoCloseable {
             case "/api/session", "/api/status" -> response = api.session();
             case "/api/devices" -> response = api.devices();
             case "/api/processes" -> response = api.processes(query);
+            case "/api/catalog" -> {
+                if (!"GET".equals(exchange.getRequestMethod())) {
+                    send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"GET required\"}");
+                    return;
+                }
+                response = api.catalog(query);
+            }
             case "/api/capture" -> {
                 if (!"POST".equals(exchange.getRequestMethod())) {
                     send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"POST required\"}");
@@ -111,6 +118,22 @@ public final class InspectorServer implements AutoCloseable {
                 }
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 response = api.highlight(body, query);
+            }
+            case "/api/jvmti-diag" -> {
+                if (!"POST".equals(exchange.getRequestMethod())) {
+                    send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"POST required\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                response = api.jvmtiDiag(body, query);
+            }
+            case "/api/debug-restart" -> {
+                if (!"POST".equals(exchange.getRequestMethod())) {
+                    send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"POST required\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                response = api.debugRestart(body, query);
             }
             default -> {
                 status = 404;
@@ -202,9 +225,12 @@ public final class InspectorServer implements AutoCloseable {
         String session();
         String devices();
         String processes(Map<String, String> query);
+        String catalog(Map<String, String> query);
         String capture(String body, Map<String, String> query);
         String mutate(String body, Map<String, String> query);
         String highlight(String body, Map<String, String> query);
+        String jvmtiDiag(String body, Map<String, String> query);
+        String debugRestart(String body, Map<String, String> query);
     }
 
     @FunctionalInterface

@@ -29,7 +29,7 @@ class SemanticCaptureTest {
         assertEquals("device", actual.deviceSerial());
         assertEquals(List.of(
                 "-s", "device", "exec-out", "content", "read", "--uri",
-                "content://com.company.uiinspector.collector/snapshot?scope=target&package=com.example&maxNodes=10000&maxDepth=200"),
+                "content://com.company.uiinspector.collector/snapshot?scope=target&package=com.example&maxNodes=5000&maxDepth=200"),
                 adb.commands.get(0));
     }
 

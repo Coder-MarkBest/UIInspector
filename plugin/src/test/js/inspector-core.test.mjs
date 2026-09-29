@@ -11,6 +11,7 @@ import {
   filterDepth,
   groupProperties,
   initialExpandedSet,
+  layoutInspection,
   isDragGesture,
   mutationKey,
   outsideViewport,
@@ -23,6 +24,7 @@ import {
   relativeBounds,
   rememberOriginalValue,
   rememberPropertyGroupOpen,
+  screenPlane,
   selectNode,
   screenshotSlice,
   shouldAutoCapture,
@@ -294,6 +296,54 @@ test('preview coordinates map rendered pixels back to device coordinates', () =>
   assert.equal(previewPoint(rect(100, 50, 100, 250), rect(0, 0, 800, 400), 100, 100), null);
 });
 
+test('screen plane uses captured image and logical screen metrics for proportional mapping', () => {
+  const input = snapshot();
+  input.screenshot = {
+    dataUrl: 'data:image/png;base64,AAA',
+    screenWidth: 800,
+    screenHeight: 480,
+    imageWidth: 1600,
+    imageHeight: 960
+  };
+  const plane = screenPlane(input, 0);
+  assert.equal(plane.hasScreenshotMetrics, true);
+  assert.deepEqual(plane.bounds, rect(0, 0, 800, 480));
+  assert.deepEqual(plane.space, rect(0, 0, 800, 480));
+  assert.equal(plane.planeWidth, 1600);
+  assert.equal(plane.planeHeight, 960);
+  assert.equal(plane.ratio, 0.45);
+  assert.deepEqual(screenPlane(input, 1).bounds, rect(0, 0, 400, 240));
+});
+
+test('screen plane falls back to the focused window union without screenshot metrics', () => {
+  const input = snapshot();
+  input.screenshot = { dataUrl: null, unavailableReason: 'protected' };
+  const plane = screenPlane(input, 0);
+  assert.equal(plane.hasScreenshotMetrics, false);
+  assert.deepEqual(plane.bounds, rect(0, 0, 800, 480));
+  assert.deepEqual(plane.space, plane.bounds);
+  assert.equal(plane.planeWidth, 800);
+  assert.equal(plane.planeHeight, 480);
+  assert.equal(plane.ratio, 0.9);
+});
+
+test('screen plane reports different logical screen when override size is present', () => {
+  const input = snapshot();
+  input.screenshot = {
+    dataUrl: 'data:image/png;base64,BBB',
+    screenWidth: 1080,
+    screenHeight: 2400,
+    imageWidth: 1080,
+    imageHeight: 2400
+  };
+  const plane = screenPlane(input, 0);
+  assert.equal(plane.hasScreenshotMetrics, true);
+  assert.deepEqual(plane.space, rect(0, 0, 1080, 2400));
+  assert.deepEqual(plane.bounds, rect(0, 0, 800, 480));
+  assert.equal(plane.ratio, 720 / 1080 > 650 / 2400 ? 650 / 2400 : 720 / 1080);
+  assert.equal(plane.ratio, 65 / 240);
+});
+
 test('2D hit testing selects the deepest node in the highest Window', () => {
   const input = snapshot();
   input.nodes.child.bounds = rect(10, 10, 300, 300);
@@ -378,20 +428,39 @@ function propertyGroup(properties) {
   };
 }
 
-test('initial expanded set opens every Window and every parent View', () => {
+test('initial expanded set starts fully collapsed', () => {
   const expanded = initialExpandedSet(snapshot());
-  assert.deepEqual(
-    ['activity', 'dialog', 'cluster'].every(id => expanded.has(id)),
-    true
-  );
-  assert.equal(expanded.has('root'), true);
-  assert.equal(expanded.has('child'), false);
+  assert.equal(expanded.size, 0);
+  for (const id of ['activity', 'dialog', 'cluster', 'root', 'child']) {
+    assert.equal(expanded.has(id), false);
+  }
 });
 
 test('toggle expanded collapses and re-expands a Window or View', () => {
   let expanded = initialExpandedSet(snapshot());
   expanded = toggleExpanded(expanded, 'root');
-  assert.equal(expanded.has('root'), false);
-  expanded = toggleExpanded(expanded, 'root');
   assert.equal(expanded.has('root'), true);
+  expanded = toggleExpanded(expanded, 'root');
+  assert.equal(expanded.has('root'), false);
+});
+
+test('layoutInspection flags image intrinsic overflow and parent overflow', () => {
+  const input = snapshot();
+  input.nodes.child.propertyGroups = [{ name: 'content', properties: { drawableIntrinsicWidth: { value: 1200 }, drawableIntrinsicHeight: { value: 400 } } }];
+  input.nodes.child.bounds = rect(10, 10, 210, 110);
+  input.nodes.child.visibleBounds = input.nodes.child.bounds;
+  input.nodes.root.bounds = rect(0, 0, 100, 100);
+  input.nodes.root.visibleBounds = input.nodes.root.bounds;
+  const child = layoutInspection(input.nodes.child, input);
+  assert.equal(child.imageOverflow, true);
+  assert.equal(child.parentOverflow, true);
+  const root = layoutInspection(input.nodes.root, input);
+  assert.equal(root.imageOverflow, false);
+  assert.equal(root.parentOverflow, false);
+});
+
+test('selectNode expands every ancestor from root to the selected View', () => {
+  const input = snapshot();
+  const result = selectNode(input, { expanded: new Set() }, 'child');
+  assert.deepEqual([...result.expanded].sort(), ['activity', 'root']);
 });

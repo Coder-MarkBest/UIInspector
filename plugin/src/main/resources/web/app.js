@@ -22,14 +22,16 @@ import {
   rememberOriginalValue,
   rememberPropertyGroupOpen,
   selectNode,
+  screenPlane,
   screenshotSlice,
   toggleExpanded,
-  windowViewZIndex
+  windowViewZIndex,
+  layoutInspection
 } from './inspector-core.js';
 
 const token = new URLSearchParams(location.search).get('token') ?? '';
 const elements = Object.fromEntries([
-  'device-select', 'scope-select', 'process-select', 'capture-button', 'connection-status',
+  'device-select', 'scope-select', 'process-select', 'catalog-panel', 'filter-label', 'filter-search', 'filter-select', 'filter-all', 'capture-button', 'jvmti-diag-button', 'jvmti-diag-panel', 'connection-status',
   'tree-search', 'tree', 'tree-count', 'display-select', 'depth-slider', 'depth-label',
   'rules-toggle', 'empty-state', 'two-d-stage', 'three-d-stage', 'screen-frame', 'screenshot',
   'overlay-layer', 'secure-screenshot', 'scene', 'stage-caption', 'fidelity-badge',
@@ -41,6 +43,10 @@ const elements = Object.fromEntries([
 let state = {
   snapshot: null,
   projectPackages: [],
+  projectProcesses: [],
+  catalogItems: [],
+  sourceSnapshot: null,
+  scopeFilter: '',
   autoCaptureAttempted: false,
   stage: '2d',
   threeMode: 'windows',
@@ -53,6 +59,7 @@ let state = {
   findings: [],
   accessibilityAudit: { enabled: [], disabled: [], issues: [] },
   twoD: { zoom: 1, panX: 0, panY: 0 },
+  ctrlSpacing: false,
   treeWidth: 306,
   accessibilityFilter: 'issues',
   editingProperty: null,
@@ -62,7 +69,8 @@ let state = {
   renderedPropertyTargetId: null,
   rotationX: 58,
   rotationZ: -27,
-  scale: .9
+  scale: .9,
+  pan3d: { x: 0, y: 0 }
 };
 
 bind();
@@ -72,25 +80,45 @@ function bind() {
   elements['device-select'].addEventListener('change', () => {
     clearMutationState();
     loadProcesses();
+    loadFilterOptions();
   });
   elements['scope-select'].addEventListener('change', () => {
     clearMutationState();
-    elements['process-select'].disabled = elements['scope-select'].value === 'global';
+    loadFilterOptions();
     renderToolbar();
   });
+  elements['filter-select'].addEventListener('change', () => {
+    clearMutationState();
+    handleFilterSelection();
+  });
+  elements['filter-search'].addEventListener('input', () => renderFilterOptions());
+  elements['filter-all'].addEventListener('change', () => renderFilterOptions());
   elements['process-select'].addEventListener('change', () => {
     clearMutationState();
-    if (elements['scope-select'].value !== 'global') capture();
+    handleFilterSelection();
   });
   elements['capture-button'].addEventListener('click', capture);
+  elements['jvmti-diag-button'].addEventListener('click', runJvmtiDiag);
+
+  document.addEventListener("keydown", event => {
+    const next = Boolean(event.ctrlKey || event.metaKey);
+    if (next !== state.ctrlSpacing) {
+      state.ctrlSpacing = next;
+      renderStage();
+    }
+  });
+  document.addEventListener("keyup", event => {
+    if (state.ctrlSpacing && !event.ctrlKey && !event.metaKey) {
+      state.ctrlSpacing = false;
+      renderStage();
+    }
+  });
   elements['tree-search'].addEventListener('input', renderTree);
   elements['screen-frame'].addEventListener('click', event => {
     if (!state.snapshot || state.stage !== '2d') return;
-    const windows = buildWindowLayers(state.snapshot, state.displayId);
-    const bounds = unionBounds(windows.map(window => window.bounds));
     const point = previewPoint(
       elements['screen-frame'].getBoundingClientRect(),
-      bounds,
+      screenPlane(state.snapshot, state.displayId).space,
       event.clientX,
       event.clientY
     );
@@ -241,8 +269,9 @@ async function loadProcesses() {
   elements['process-select'].replaceChildren(option('', '选择进程'));
   if (!serial) return;
   try {
-    const processes = await api(`api/processes?serial=${encodeURIComponent(serial)}`);
+    const processes = await api('api/processes?serial=' + encodeURIComponent(serial));
     if (processes.error) throw new Error(processes.error);
+    state.projectProcesses = Array.isArray(processes) ? processes : [];
     for (const process of processes) {
       const item = option(String(process.pid), `${process.processName} · ${process.pid}`);
       item.dataset.package = process.packageName;
@@ -254,24 +283,118 @@ async function loadProcesses() {
   }
 }
 
+async function loadFilterOptions() {
+  const serial = elements['device-select'].value;
+  const scope = elements['scope-select'].value;
+  const select = elements['filter-select'];
+  elements['filter-label'].textContent = filterLabelForScope(scope);
+  select.replaceChildren();
+  if (!serial) return;
+  elements['filter-all'].checked = true;
+  try {
+    const items = await api('api/catalog?serial=' + encodeURIComponent(serial) + '&scope=' + encodeURIComponent(scope));
+    if (items.error) throw new Error(items.error);
+    state.catalogItems = Array.isArray(items) ? items : [];
+    for (const item of state.catalogItems) {
+      const label = item.label ?? item.id ?? '';
+      const opt = option(String(item.id ?? label), label);
+      if (item.pid != null) opt.dataset.pid = String(item.pid);
+      if (item.packageName) opt.dataset.package = item.packageName;
+      if (item.processName) opt.dataset.process = item.processName;
+      opt.title = label;
+      select.append(opt);
+    }
+    renderFilterOptions();
+  } catch (error) {
+    fail(error);
+  }
+}
+
+function filterLabelForScope(scope) {
+  if (scope === 'process') return '进程';
+  if (scope === 'window') return 'Window';
+  if (scope === 'activity') return 'Activity / Fragment';
+  return '分类';
+}
+
+function renderFilterOptions() {
+  const select = elements['filter-select'];
+  const all = elements['filter-all'].checked;
+  const query = (elements['filter-search'].value || '').trim().toLowerCase();
+  const selected = new Set([...select.selectedOptions].map(o => o.value));
+  for (const opt of select.options) {
+    const text = opt.textContent || opt.text || '';
+    const visible = !query || text.toLowerCase().includes(query);
+    opt.hidden = !visible;
+    opt.selected = all || selected.has(opt.value);
+  }
+}
+
+function handleFilterSelection() {
+  const select = elements['filter-select'];
+  const options = [...select.options].filter(o => !o.hidden);
+  const selectedCount = [...select.selectedOptions].filter(o => !o.hidden).length;
+  const allBox = elements['filter-all'];
+  if (options.length && selectedCount === options.length) allBox.checked = true;
+  else allBox.checked = false;
+}
+
 async function capture() {
   const serial = elements['device-select'].value;
   const scope = elements['scope-select'].value;
-  const processOption = elements['process-select'].selectedOptions[0];
   if (!serial) return fail(new Error('请先选择已授权的 Android 设备。'));
-  if (scope !== 'global' && !processOption?.value) return fail(new Error('请选择目标进程。'));
+  const all = elements['filter-all'].checked;
+  const selected = [...elements['filter-select'].selectedOptions]
+    .map(o => ({ value: o.value, pid: o.dataset.pid, packageName: o.dataset.package, processName: o.dataset.process }));
+  let pid = 0;
+  let packageName = null;
+  let processName = null;
+  if (scope === 'process') {
+    const processItem = all ? null : selected.find(item => item.pid);
+    if (processItem) {
+      pid = Number(processItem.pid);
+      packageName = processItem.packageName ?? null;
+      processName = processItem.processName ?? null;
+    } else {
+      const processOption = elements['process-select'].selectedOptions[0] || null;
+      pid = processOption?.value ? Number(processOption.value) : 0;
+      packageName = processOption?.dataset.package ?? null;
+      processName = processOption?.dataset.process ?? null;
+    }
+  } else {
+    const processItem = selected.find(item => item.pid);
+    if (processItem) {
+      pid = Number(processItem.pid);
+      packageName = processItem.packageName ?? null;
+      processName = processItem.processName ?? null;
+    } else {
+      const processOption = elements['process-select'].selectedOptions[0] || null;
+      pid = processOption?.value ? Number(processOption.value) : 0;
+      packageName = processOption?.dataset.package ?? null;
+      processName = processOption?.dataset.process ?? null;
+    }
+  }
+  if (!pid && state.projectProcesses?.length) {
+    const first = state.projectProcesses[0];
+    pid = first.pid;
+    packageName = first.packageName;
+    processName = first.processName;
+  }
   clearMutationState();
   setCapturing(true);
   try {
+    const body = {
+      serial,
+      scope,
+      pid,
+      packageName,
+      processName
+    };
+    if (!all && scope === 'window') body.windowIds = selected.map(item => item.value);
+    if (!all && scope === 'activity') body.activities = selected.map(item => item.value);
     const snapshot = await api('api/capture', {
       method: 'POST',
-      body: JSON.stringify({
-        serial,
-        scope,
-        pid: Number(processOption?.value ?? 0),
-        packageName: processOption?.dataset.package ?? null,
-        processName: processOption?.dataset.process ?? null
-      })
+      body: JSON.stringify(body)
     });
     if (snapshot.error) throw new Error(snapshot.error);
     applySnapshot(snapshot);
@@ -294,7 +417,94 @@ async function capture() {
   }
 }
 
+
+async function runJvmtiDiag() {
+  const serial = elements['device-select'].value;
+  const processOption = elements['process-select'].selectedOptions[0];
+  if (!serial) return fail(new Error('请先选择已授权的 Android 设备。'));
+  if (!processOption?.value) return fail(new Error('请先选择目标进程。'));
+  const panel = elements['jvmti-diag-panel'];
+  panel.hidden = false;
+  panel.replaceChildren();
+  const waiting = document.createElement('p');
+  waiting.className = 'jvmti-diag-summary';
+  waiting.textContent = '正在检测 JVMTI 可用性，需要 10-20 秒…';
+  panel.append(waiting);
+  elements['jvmti-diag-button'].disabled = true;
+  elements['jvmti-diag-button'].textContent = '检测中…';
+  try {
+    const result = await api('api/jvmti-diag', {
+      method: 'POST',
+      body: JSON.stringify({
+        serial,
+        pid: Number(processOption.value),
+        packageName: processOption.dataset.package ?? null,
+        processName: processOption.dataset.process ?? null
+      })
+    });
+    if (result.error) throw new Error(result.error);
+    renderJvmtiDiag(result);
+  } catch (error) {
+    fail(error);
+  } finally {
+    elements['jvmti-diag-button'].disabled = false;
+    elements['jvmti-diag-button'].textContent = '检测 JVMTI';
+  }
+}
+
+function renderJvmtiDiag(result) {
+  const panel = elements['jvmti-diag-panel'];
+  panel.hidden = false;
+  panel.replaceChildren();
+  const titleRow = document.createElement('div');
+  titleRow.className = 'jvmti-diag-title';
+  const chip = document.createElement('span');
+  chip.className = result.ok ? 'jvmti-diag-chip ok' : 'jvmti-diag-chip bad';
+  chip.textContent = result.ok ? '可用' : '不可用/受限';
+  const head = document.createElement('strong');
+  head.textContent = 'JVMTI 诊断 · ' + (result.processName ?? result.pid ?? '');
+  titleRow.append(head, chip);
+  panel.append(titleRow);
+  const summary = document.createElement('p');
+  summary.className = 'jvmti-diag-summary';
+  summary.textContent = [
+    result.debuggable ? '进程可调试' : '进程不可调试',
+    result.abi ? 'ABI=' + result.abi : null,
+    result.stage ? '最远阶段=' + result.stage : null,
+    result.status ? '状态=' + result.status : null,
+    result.snapshotWritten ? '快照已写入' : '快照未写入'
+  ].filter(Boolean).join(' · ');
+  panel.append(summary);
+  const list = document.createElement('ul');
+  list.className = 'jvmti-diag-steps';
+  for (const step of result.steps ?? []) {
+    const item = document.createElement('li');
+    item.className = step.ok ? 'ok' : 'bad';
+    item.textContent = `${step.ok ? '✔' : '✘'} ${step.name}: ${step.detail ?? ''}`;
+    list.append(item);
+  }
+  panel.append(list);
+  if (result.logcat) {
+    const caption = document.createElement('p');
+    caption.className = 'jvmti-diag-log-title';
+    caption.textContent = '近期 Agent logcat（设备端）';
+    panel.append(caption);
+    const pre = document.createElement('pre');
+    pre.className = 'jvmti-diag-log';
+    pre.textContent = result.logcat;
+    panel.append(pre);
+  }
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '关闭';
+  close.className = 'ghost-button';
+  close.addEventListener('click', () => { panel.hidden = true; panel.replaceChildren(); });
+  panel.append(close);
+}
+
+
 function applySnapshot(snapshot) {
+  state.sourceSnapshot = snapshot;
   state.snapshot = snapshot;
   state.twoD = { zoom: 1, panX: 0, panY: 0 };
   state.findings = evaluateRules(snapshot, elements['rules-toggle'].checked);
@@ -303,6 +513,7 @@ function applySnapshot(snapshot) {
   elements['display-select'].replaceChildren(...(displays.length ? displays : [0]).map(value => option(String(value), String(value))));
   state.displayId = displays[0] ?? 0;
   state.expanded = initialExpandedSet(snapshot);
+  renderFilterOptions();
   chooseDefaultSelection();
   render();
 }
@@ -331,7 +542,7 @@ function renderToolbar() {
   document.querySelectorAll('[data-stage]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.stage === state.stage)));
   document.querySelectorAll('[data-three-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.threeMode === state.threeMode)));
   elements['three-mode'].hidden = state.stage !== '3d';
-  elements['process-select'].disabled = elements['scope-select'].value === 'global';
+  elements['catalog-panel'].hidden = false;
 }
 
 function renderTree() {
@@ -446,12 +657,78 @@ function configureDepth(items) {
   elements['depth-label'].textContent = state.depth === 'all' ? `全部 ${noun}` : `${noun} ${state.depth}`;
 }
 
+function toStagePoint(device, bounds, space, planeWidth, planeHeight, ratio, hasScreenshotMetrics) {
+  const sx = hasScreenshotMetrics ? space : bounds;
+  const dw = Math.max(1, sx.right - sx.left);
+  const dh = Math.max(1, sx.bottom - sx.top);
+  return {
+    left: ((device.left - sx.left) / dw) * planeWidth * ratio,
+    top: ((device.top - sx.top) / dh) * planeHeight * ratio,
+    right: ((device.right - sx.left) / dw) * planeWidth * ratio,
+    bottom: ((device.bottom - sx.top) / dh) * planeHeight * ratio
+  };
+}
+
+function appendSizeTag(container, node, pt) {
+  const w = Math.round(Number(node.bounds.right) - Number(node.bounds.left));
+  const h = Math.round(Number(node.bounds.bottom) - Number(node.bounds.top));
+  const tag = el("span", "overlay-size-tag", w + " x " + h + " px");
+  tag.style.left = Math.max(0, pt.right + 6) + "px";
+  tag.style.top = Math.max(0, pt.top - 22) + "px";
+  container.append(tag);
+}
+
+function addGapLine(container, from, to, axisFrom, axisTo, otherAxisFrom, otherAxisTo, gapPx, orientation) {
+  const innerTop = Math.max(axisFrom, otherAxisFrom);
+  const innerBottom = Math.min(axisTo, otherAxisTo);
+  const mid = (innerTop + innerBottom) / 2;
+  const thickness = 2;
+  const line = el("span", "overlay-spacing-line");
+  if (orientation === "h") {
+    line.style.left = Math.min(from, to) + "px";
+    line.style.top = (mid - thickness / 2) + "px";
+    line.style.width = Math.max(2, Math.abs(to - from)) + "px";
+    line.style.height = thickness + "px";
+  } else {
+    line.style.left = (mid - thickness / 2) + "px";
+    line.style.top = Math.min(from, to) + "px";
+    line.style.height = Math.max(2, Math.abs(from - to)) + "px";
+    line.style.width = thickness + "px";
+  }
+  const label = el("span", "overlay-spacing-label", Math.round(gapPx) + "px");
+  label.style.left = (orientation === "h" ? (Math.min(from, to) + Math.abs(to - from) / 2) : mid) + "px";
+  label.style.top = (orientation === "h" ? Math.max(0, mid - 14) : (Math.min(from, to) + Math.abs(from - to) / 2)) + "px";
+  label.style.transform = "translate(-50%, -50%)";
+  container.append(line, label);
+}
+
+function appendSpacingAnnotations(container, node, snapshot, bounds, space, planeWidth, planeHeight, ratio, hasScreenshotMetrics) {
+  if (!node || !node.bounds) return;
+  const a = toStagePoint(node.bounds, bounds, space, planeWidth, planeHeight, ratio, hasScreenshotMetrics);
+  const related = [];
+  if (node.parentId && snapshot.nodes[node.parentId]) related.push(snapshot.nodes[node.parentId]);
+  for (const childId of node.childIds ?? []) {
+    const child = snapshot.nodes[childId];
+    if (child) related.push(child);
+  }
+  for (const other of related) {
+    if (!other || !other.bounds) continue;
+    const b = toStagePoint(other.bounds, bounds, space, planeWidth, planeHeight, ratio, hasScreenshotMetrics);
+    const gx1 = node.bounds.left - other.bounds.left;
+    const gx2 = other.bounds.right - node.bounds.right;
+    const gy1 = node.bounds.top - other.bounds.top;
+    const gy2 = other.bounds.bottom - node.bounds.bottom;
+    if (gx1 > 0) addGapLine(container, a.left, b.left, a.top, a.bottom, b.top, b.bottom, gx1, "h");
+    if (gx2 > 0) addGapLine(container, b.right, a.right, a.top, a.bottom, b.top, b.bottom, gx2, "h");
+    if (gy1 > 0) addGapLine(container, a.top, b.top, a.left, a.right, b.left, b.right, gy1, "v");
+    if (gy2 > 0) addGapLine(container, b.bottom, a.bottom, a.left, a.right, b.left, b.right, gy2, "v");
+  }
+}
+
 function render2d() {
-  const windows = buildWindowLayers(state.snapshot, state.displayId);
-  const bounds = unionBounds(windows.map(window => window.bounds));
-  const ratio = Math.min(1, 720 / Math.max(bounds.right - bounds.left, 1), 650 / Math.max(bounds.bottom - bounds.top, 1));
-  const width = Math.max(160, Math.round((bounds.right - bounds.left) * ratio));
-  const height = Math.max(160, Math.round((bounds.bottom - bounds.top) * ratio));
+  const { bounds, space, ratio, planeWidth, planeHeight, hasScreenshotMetrics } = screenPlane(state.snapshot, state.displayId);
+  const width = Math.max(160, Math.round(planeWidth * ratio));
+  const height = Math.max(160, Math.round(planeHeight * ratio));
   elements['screen-frame'].style.width = `${width}px`;
   elements['screen-frame'].style.height = `${height}px`;
   const screenshot = state.snapshot.screenshot;
@@ -463,16 +740,45 @@ function render2d() {
   const findingIds = new Set(state.findings.map(value => value.nodeId));
   const fragment = document.createDocumentFragment();
   for (const node of Object.values(state.snapshot.nodes ?? {})) {
+    if (node.id !== state.selectedNodeId && !findingIds.has(node.id)) continue;
     const window = state.snapshot.windows.find(value => value.id === node.windowId);
     if (!window || window.displayId !== state.displayId || !node.bounds) continue;
-    const box = el('div', `node-box${node.id === state.selectedNodeId ? ' selected' : ''}${findingIds.has(node.id) ? ' finding' : ''}`);
+    const isSelected = node.id === state.selectedNodeId;
+    const isFinding = findingIds.has(node.id);
+    const box = el('div', `node-box${isSelected ? ' selected' : ''}${isFinding ? ' finding' : ''}`);
     box.setAttribute('aria-hidden', 'true');
     box.dataset.nodeId = node.id;
     box.title = node.className ?? node.id;
-    box.style.left = `${(node.bounds.left - bounds.left) * ratio}px`;
-    box.style.top = `${(node.bounds.top - bounds.top) * ratio}px`;
-    box.style.width = `${Math.max(2, (node.bounds.right - node.bounds.left) * ratio)}px`;
-    box.style.height = `${Math.max(2, (node.bounds.bottom - node.bounds.top) * ratio)}px`;
+    const position = hasScreenshotMetrics
+      ? {
+          left: (node.bounds.left - space.left) / (space.right - space.left),
+          top: (node.bounds.top - space.top) / (space.bottom - space.top),
+          width: (node.bounds.right - node.bounds.left) / (space.right - space.left),
+          height: (node.bounds.bottom - node.bounds.top) / (space.bottom - space.top)
+        }
+      : {
+          left: (node.bounds.left - bounds.left) / (bounds.right - bounds.left),
+          top: (node.bounds.top - bounds.top) / (bounds.bottom - bounds.top),
+          width: (node.bounds.right - node.bounds.left) / (bounds.right - bounds.left),
+          height: (node.bounds.bottom - node.bounds.top) / (bounds.bottom - bounds.top)
+        };
+    box.style.left = `${position.left * planeWidth * ratio}px`;
+    box.style.top = `${position.top * planeHeight * ratio}px`;
+    box.style.width = `${Math.max(2, position.width * planeWidth * ratio)}px`;
+    box.style.height = `${Math.max(2, position.height * planeHeight * ratio)}px`;
+    const inspection = layoutInspection(node, state.snapshot);
+    if (inspection.imageOverflow) box.classList.add("edge-image-overflow");
+    if (inspection.parentOverflow) box.classList.add("edge-parent-overflow");
+    if (isSelected) {
+      const selPt = {
+        left: position.left * planeWidth * ratio,
+        top: position.top * planeHeight * ratio,
+        right: (position.left + position.width) * planeWidth * ratio,
+        bottom: (position.top + position.height) * planeHeight * ratio
+      };
+      appendSizeTag(fragment, node, selPt);
+      if (state.ctrlSpacing) appendSpacingAnnotations(fragment, node, state.snapshot, bounds, space, planeWidth, planeHeight, ratio, hasScreenshotMetrics);
+    }
     fragment.append(box);
   }
   elements['overlay-layer'].append(fragment);
@@ -523,9 +829,14 @@ function render3d(items) {
       : item.id === state.selectedNodeId;
     if (selected) plane.classList.add('selected');
     if (findingIds.has(item.id)) plane.classList.add('finding');
+    if (!windowMode) {
+      const inspection = layoutInspection(item, state.snapshot);
+      if (inspection.imageOverflow) plane.classList.add("edge-image-overflow");
+      if (inspection.parentOverflow) plane.classList.add("edge-parent-overflow");
+    }
     if (windowMode) appendWindowViews(plane, item, findingIds);
     plane.append(el('span', 'plane-label', windowMode ? windowLabel(item) : item.className?.split('.').at(-1) ?? item.id));
-    plane.addEventListener('click', () => windowMode ? selectWindow(item.id) : selectNodeId(item.id));
+    plane.addEventListener('click', () => windowMode ? selectWindow(item.id) : selectNodeId(item.id, true));
     if (windowMode) plane.addEventListener('keydown', event => {
       if (event.target !== plane || !['Enter', ' '].includes(event.key)) return;
       event.preventDefault();
@@ -550,6 +861,9 @@ function appendWindowViews(plane, window, findingIds) {
     box.style.width = `${Math.max(.5, geometry.width)}%`;
     box.style.height = `${Math.max(.5, geometry.height)}%`;
     box.style.zIndex = String(windowViewZIndex(node));
+    const inspection = layoutInspection(node, state.snapshot);
+    if (inspection.imageOverflow) box.classList.add("edge-image-overflow");
+    if (inspection.parentOverflow) box.classList.add("edge-parent-overflow");
     box.addEventListener('click', event => {
       event.stopPropagation();
       selectNodeId(node.id, true);
@@ -884,8 +1198,8 @@ function selectWindow(id) {
 function selectNodeId(id, revealTree = false) {
   const selection = selectNode(state.snapshot, state, id);
   if (!selection) return;
-  revealAncestors(id);
-  state = { ...state, ...selection };
+  const expanded = revealAncestors(id);
+  state = { ...state, ...selection, expanded };
   render();
   if (revealTree) revealTreeNode(id);
   clearHighlightOnDevice();
@@ -925,7 +1239,7 @@ async function clearHighlightOnDevice() {
 
 function revealAncestors(id) {
   const node = state.snapshot?.nodes?.[id];
-  if (!node) return;
+  if (!node) return new Set(state.expanded ?? []);
   const expanded = new Set(state.expanded ?? []);
   expanded.add(node.windowId);
   let current = node;
@@ -933,7 +1247,7 @@ function revealAncestors(id) {
     current = state.snapshot.nodes[current.parentId];
     expanded.add(current.id);
   }
-  state.expanded = expanded;
+  return expanded;
 }
 
 function revealTreeNode(id) {
@@ -973,6 +1287,8 @@ function bindSceneControls() {
       y: event.clientY,
       rx: state.rotationX,
       rz: state.rotationZ,
+      px: state.pan3d.x,
+      py: state.pan3d.y,
       pointerId: event.pointerId,
       active: false
     };
@@ -985,14 +1301,19 @@ function bindSceneControls() {
       stage.setPointerCapture(event.pointerId);
       stage.classList.add('dragging');
     }
-    const rotation = dragRotation(
-      drag.rx,
-      drag.rz,
-      event.clientX - drag.x,
-      event.clientY - drag.y
-    );
-    state.rotationX = rotation.rotationX;
-    state.rotationZ = rotation.rotationZ;
+    if (event.ctrlKey || event.metaKey) {
+      const rotation = dragRotation(
+        drag.rx,
+        drag.rz,
+        event.clientX - drag.x,
+        event.clientY - drag.y
+      );
+      state.rotationX = rotation.rotationX;
+      state.rotationZ = rotation.rotationZ;
+    } else {
+      state.pan3d.x = drag.px + (event.clientX - drag.x);
+      state.pan3d.y = drag.py + (event.clientY - drag.y);
+    }
     updateSceneTransform();
   });
   stage.addEventListener('pointerup', event => {
@@ -1010,7 +1331,7 @@ function bindSceneControls() {
 }
 
 function updateSceneTransform() {
-  elements.scene.style.transform = `rotateX(${state.rotationX}deg) rotateZ(${state.rotationZ}deg) scale(${state.scale})`;
+  elements.scene.style.transform = "translate(" + state.pan3d.x + "px, " + state.pan3d.y + "px) rotateX(" + state.rotationX + "deg) rotateZ(" + state.rotationZ + "deg) scale(" + state.scale + ")";
 }
 
 async function api(path, options = {}) {

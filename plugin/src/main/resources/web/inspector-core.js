@@ -22,6 +22,44 @@ export function buildWindowLayers(snapshot, displayId) {
     .sort((left, right) => left.layer - right.layer || left.id.localeCompare(right.id));
 }
 
+function unionBounds(bounds) {
+  const valid = bounds.filter(Boolean);
+  if (!valid.length) return { left: 0, top: 0, right: 1, bottom: 1 };
+  return valid.reduce((result, value) => ({
+    left: Math.min(result.left, value.left), top: Math.min(result.top, value.top),
+    right: Math.max(result.right, value.right), bottom: Math.max(result.bottom, value.bottom)
+  }), { ...valid[0] });
+}
+
+export function screenPlane(snapshot, displayId) {
+  const windows = buildWindowLayers(snapshot, displayId);
+  const union = unionBounds(windows.map(window => window.bounds));
+  const shot = snapshot?.screenshot;
+  const imageWidth = Number(shot?.imageWidth) || 0;
+  const imageHeight = Number(shot?.imageHeight) || 0;
+  const screenWidth = Number(shot?.screenWidth) || 0;
+  const screenHeight = Number(shot?.screenHeight) || 0;
+  const hasScreenshotMetrics = imageWidth > 0 && imageHeight > 0;
+  const planeWidth = hasScreenshotMetrics ? imageWidth : (union.right - union.left);
+  const planeHeight = hasScreenshotMetrics ? imageHeight : (union.bottom - union.top);
+  const space = screenWidth > 0 && screenHeight > 0
+    ? { left: 0, top: 0, right: screenWidth, bottom: screenHeight }
+    : union;
+  const ratio = Math.min(1, 720 / Math.max(planeWidth, 1), 650 / Math.max(planeHeight, 1));
+  return {
+    bounds: union,
+    space,
+    ratio,
+    planeWidth,
+    planeHeight,
+    imageWidth,
+    imageHeight,
+    screenWidth,
+    screenHeight,
+    hasScreenshotMetrics
+  };
+}
+
 export function buildWindowScene(snapshot, displayId) {
   return buildWindowLayers(snapshot, displayId)
     .map(window => ({ ...window, nodes: buildViewDepths(snapshot, window.id) }));
@@ -117,6 +155,19 @@ export function windowViewZIndex(node) {
   return 1 + depth * 100 + drawingOrder;
 }
 
+
+export function visibleHitRect(node) {
+  const bounds = positiveRect(node.bounds);
+  const visible = positiveRect(node.visibleBounds);
+  if (!bounds) return visible;
+  if (!visible) return bounds;
+  const inside = visible.left >= bounds.left
+    && visible.top >= bounds.top
+    && visible.right <= bounds.right
+    && visible.bottom <= bounds.bottom;
+  return inside ? visible : bounds;
+}
+
 export function pickNodeAt(snapshot, displayId, x, y) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   const windows = new Map((snapshot?.windows ?? [])
@@ -126,7 +177,7 @@ export function pickNodeAt(snapshot, displayId, x, y) {
     .map(node => ({
       node,
       window: windows.get(node.windowId),
-      hit: positiveRect(node.visibleBounds) ?? positiveRect(node.bounds)
+      hit: visibleHitRect(node)
     }))
     .filter(value => value.window && value.hit && containsPoint(value.hit, x, y))
     .sort(compareHitCandidates)
@@ -191,6 +242,11 @@ export function selectNode(snapshot, state, nodeId) {
   if (!node) return null;
   const expanded = new Set(state?.expanded ?? []);
   expanded.add(node.windowId);
+  let current = node;
+  while (current?.parentId && snapshot?.nodes?.[current.parentId]) {
+    current = snapshot.nodes[current.parentId];
+    expanded.add(current.id);
+  }
   return {
     selectedNodeId: node.id,
     selectedWindowId: node.windowId,
@@ -199,12 +255,9 @@ export function selectNode(snapshot, state, nodeId) {
   };
 }
 
-export function initialExpandedSet(snapshot) {
-  const expanded = new Set((snapshot?.windows ?? []).map(window => window.id));
-  for (const node of Object.values(snapshot?.nodes ?? {})) {
-    if (node && (node.childIds?.length ?? 0) > 0) expanded.add(node.id);
-  }
-  return expanded;
+export function initialExpandedSet() {
+  // 默认全部收起，用户点击箭头展开；选择节点时会自动展开祖先。
+  return new Set();
 }
 
 export function toggleExpanded(expanded, id) {
@@ -232,6 +285,31 @@ export function mutationKey(pid, targetId, propertyName) {
 export function rememberOriginalValue(history, key, value) {
   if (!history.has(key)) history.set(key, value);
   return history;
+}
+
+export function layoutInspection(node, snapshot) {
+  const result = { imageOverflow: false, parentOverflow: false };
+  if (!node) return result;
+  const width = Number(node.bounds?.right) - Number(node.bounds?.left);
+  const height = Number(node.bounds?.bottom) - Number(node.bounds?.top);
+  const properties = flattenProperties(node);
+  const intrinsicWidth = Number(properties.drawableIntrinsicWidth);
+  const intrinsicHeight = Number(properties.drawableIntrinsicHeight);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+      && Number.isFinite(intrinsicWidth) && Number.isFinite(intrinsicHeight)
+      && intrinsicWidth > 0 && intrinsicHeight > 0
+      && (intrinsicWidth > width || intrinsicHeight > height)) {
+    result.imageOverflow = true;
+  }
+  const parent = node.parentId ? snapshot?.nodes?.[node.parentId] : null;
+  const nodeBox = positiveRect(node.bounds);
+  const parentBox = parent ? positiveRect(parent.bounds) : null;
+  if (nodeBox && parentBox
+      && (nodeBox.left < parentBox.left || nodeBox.top < parentBox.top
+          || nodeBox.right > parentBox.right || nodeBox.bottom > parentBox.bottom)) {
+    result.parentOverflow = true;
+  }
+  return result;
 }
 
 export function evaluateRules(snapshot, enabled) {

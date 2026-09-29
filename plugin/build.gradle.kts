@@ -20,7 +20,14 @@ java {
 dependencies {
     implementation(project(":protocol"))
     intellijPlatform {
-        androidStudio("2026.1.2.11")
+        // 可选：通过 -PuiInspector.androidStudioLocal=<path> 指向本机已安装的 Android Studio，
+        // 跳过从 Google CDN 下载 IDE 安装包（内网/超时环境可用）。
+        val localIde = providers.gradleProperty("uiInspector.androidStudioLocal").orNull
+        if (localIde != null) {
+            local(localIde)
+        } else {
+            androidStudio("2026.1.2.11")
+        }
     }
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

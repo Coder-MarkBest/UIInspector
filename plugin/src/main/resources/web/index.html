@@ -22,18 +22,21 @@
     <label class="field compact">
       <span>范围</span>
       <select id="scope-select" aria-label="采集范围">
-        <option value="target">目标进程</option>
-        <option value="process">进程 Window</option>
-        <option value="global">全局 Window</option>
+        <option value="process" selected>按进程</option><option value="window">按 Window</option><option value="activity">按 Activity/Fragment</option>
       </select>
     </label>
-    <label class="field process-field">
-      <span>进程</span>
-      <select id="process-select" aria-label="目标进程"><option value="">选择进程</option></select>
-    </label>
+    <select id="process-select" hidden><option value="">选择进程</option></select>
     <button id="capture-button" class="primary-button">采集</button>
+    <button id="jvmti-diag-button" type="button" class="ghost-button">检测 JVMTI</button>
   </header>
+  <section id="catalog-panel" class="catalog-panel" hidden>
+    <span id="filter-label" class="catalog-label">进程</span>
+    <input id="filter-search" type="search" placeholder="搜索/模糊匹配" autocomplete="off">
+    <select id="filter-select" multiple aria-label="分类筛选"></select>
+    <label class="all-check"><input id="filter-all" type="checkbox" checked>全部</label>
+  </section>
 
+  <div id="jvmti-diag-panel" class="jvmti-diag-panel" hidden></div>
   <main class="workspace">
     <aside class="tree-panel panel">
       <div class="panel-heading">

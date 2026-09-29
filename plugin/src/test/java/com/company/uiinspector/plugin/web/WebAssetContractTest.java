@@ -21,7 +21,7 @@ final class WebAssetContractTest {
         assertTrue(html.contains("Window layers"));
         assertTrue(html.contains("View depth"));
         assertTrue(html.contains("id=\"rules-toggle\" type=\"checkbox\""));
-        assertTrue(css.contains("grid-template-columns: 274px minmax(420px, 1fr) 330px"));
+        assertTrue(css.contains("grid-template-columns: var(--tree-width, 306px) minmax(420px, 1fr) 330px"));
         assertTrue(css.contains("prefers-reduced-motion"));
         assertTrue(app.contains("api('api/capture'"));
         assertTrue(app.contains("api('api/mutate'"));

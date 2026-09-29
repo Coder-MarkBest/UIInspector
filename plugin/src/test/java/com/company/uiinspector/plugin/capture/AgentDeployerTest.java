@@ -18,7 +18,7 @@ import com.company.uiinspector.protocol.SnapshotJson;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -71,6 +71,40 @@ class AgentDeployerTest {
                 "device", new RunningProcess("u0_a1", 123, "com.example", "com.example"), "arm64-v8a");
 
         assertEquals("com.example", result.targetPackage());
+    }
+
+    @Test
+    void diagnoseJvmtiReportsCompleteWhenSnapshotWritten() throws Exception {
+        var snapshot = sampleSnapshot();
+        var adb = new RecordingAdb(SnapshotJson.encode(snapshot));
+        var payloads = new AgentPayloads(
+                Path.of("helper.apk"),
+                Map.of("arm64-v8a", Path.of("arm64", "libuiinspector_agent.so")));
+        var deployer = new AgentDeployer(adb, payloads, () -> CAPTURE_ID);
+
+        var result = deployer.diagnoseJvmti(
+                "device", new RunningProcess("u0_a1", 123, "com.example", "com.example"), "arm64-v8a");
+
+        assertTrue(result.ok());
+        assertTrue(result.snapshotWritten());
+        assertEquals("COMPLETE", result.status());
+        assertTrue(adb.hasElement("attach-agent"));
+        assertTrue(adb.hasArgContaining("diag-"));
+        assertTrue(result.steps().stream().anyMatch(step -> "attach".equals(step.name()) && step.ok()));
+    }
+
+    @Test
+    void diagnoseJvmtiReportsNoPayloadForUnsupportedAbi() throws Exception {
+        var adb = new RecordingAdb("{}");
+        var deployer = new AgentDeployer(
+                adb, new AgentPayloads(Path.of("helper.apk"), Map.of()), () -> CAPTURE_ID);
+
+        var result = deployer.diagnoseJvmti(
+                "device", new RunningProcess("u0_a1", 123, "com.example", "com.example"), "mips");
+
+        assertTrue(!result.ok());
+        assertEquals("NO_PAYLOAD", result.status());
+        assertTrue(result.steps().stream().anyMatch(step -> "abi".equals(step.name()) && !step.ok()));
     }
 
     @Test
@@ -191,7 +225,7 @@ class AgentDeployerTest {
 
     /** Standard mock: run-as works, returns private dir via pwd. */
     private static final class RecordingAdb implements AdbClient {
-        final List<List<String>> commands = new ArrayList<>();
+        final List<List<String>> commands = new CopyOnWriteArrayList<>();
         final String snapshot;
         final String mutationResult;
 
@@ -207,7 +241,9 @@ class AgentDeployerTest {
             commands.add(List.copyOf(arguments));
             String output = "";
             if (arguments.contains("pwd")) output = PRIVATE_DIR + "\n";
-            if (arguments.contains("cat")) {
+            if (arguments.contains("cat")
+                    || (arguments.contains("sh") && arguments.contains("-c")
+                            && arguments.stream().anyMatch(v -> v.contains("cat \"$f\"")))) {
                 output = arguments.stream().anyMatch(v -> v.contains("mutation-result"))
                         ? mutationResult : snapshot;
             }
@@ -232,7 +268,7 @@ class AgentDeployerTest {
      * run-as pwd returns exit 1; id -u returns "0".
      */
     private static final class RootFallbackAdb implements AdbClient {
-        final List<List<String>> commands = new ArrayList<>();
+        final List<List<String>> commands = new CopyOnWriteArrayList<>();
         final String snapshot;
         final String mutationResult;
 
@@ -255,7 +291,9 @@ class AgentDeployerTest {
             if (arguments.contains("id") && arguments.contains("-u")) {
                 output = "0\n";
             }
-            if (arguments.contains("cat")) {
+            if (arguments.contains("cat")
+                    || (arguments.contains("sh") && arguments.contains("-c")
+                            && arguments.stream().anyMatch(v -> v.contains("cat \"$f\"")))) {
                 output = arguments.stream().anyMatch(v -> v.contains("mutation-result"))
                         ? mutationResult : snapshot;
             }

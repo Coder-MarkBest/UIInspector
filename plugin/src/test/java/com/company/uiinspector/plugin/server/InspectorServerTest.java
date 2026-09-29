@@ -91,5 +91,11 @@ class InspectorServerTest {
         @Override public String highlight(String body, Map<String, String> query) {
             return "{\"ok\":true}";
         }
+        @Override public String jvmtiDiag(String body, Map<String, String> query) {
+            return "{\"ok\":false}";
+        }
+        @Override public String debugRestart(String body, Map<String, String> query) {
+            return "{\"ok\":true}";
+        }
     }
 }

@@ -28,6 +28,22 @@ class AgentDeployerTest {
     private static final String PRIVATE_DIR = "/data/user/0/com.example";
     private static final String CAPTURE_ID = "capture-1";
 
+    /**
+     * Cleanup runs on a daemon background thread (best effort). Poll until the
+     * async `rm` command has been recorded so assertions are not flaky.
+     */
+    private static boolean awaitCleanup(RecordingAdb adb) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (adb.hasElement("rm")) {
+                return true;
+            }
+            Thread.sleep(25);
+        }
+        return adb.hasElement("rm");
+    }
+
+
     private static InspectionSnapshot sampleSnapshot() {
         return new InspectionSnapshot(
                 1, 20L, "device", CaptureScope.TARGET_PROCESS, "com.example", "com.example",
@@ -191,7 +207,7 @@ class AgentDeployerTest {
         assertTrue(adb.hasElement("attach-agent"));
         assertTrue(adb.hasArgContaining("command-" + CAPTURE_ID + ".json"));
         assertTrue(adb.hasArgContaining("mutation-result-" + CAPTURE_ID + ".json"));
-        assertTrue(adb.hasElement("rm") && adb.hasArgContaining("command-" + CAPTURE_ID + ".json"));
+        assertTrue(awaitCleanup(adb) && adb.hasArgContaining("command-" + CAPTURE_ID + ".json"));
     }
 
     @Test

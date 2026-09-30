@@ -37,7 +37,7 @@ const elements = Object.fromEntries([
   'overlay-layer', 'secure-screenshot', 'scene', 'stage-caption', 'fidelity-badge',
   'property-panel', 'selected-title', 'selected-source', 'properties', 'findings', 'finding-count',
   'finding-list', 'accessibility-audit', 'accessibility-audit-count', 'accessibility-audit-list',
-  'diagnostic-list', 'toast', 'three-mode'
+  'diagnostic-list', 'toast', 'three-mode', 'scope-filter-toggle', 'reset-stage-button', 'tree-toggle', 'property-toggle', 'property-resize-handle', 'filter-list', 'tree-edge-toggle', 'property-edge-toggle'
 ].map(id => [id, document.getElementById(id)]));
 
 let state = {
@@ -61,6 +61,10 @@ let state = {
   twoD: { zoom: 1, panX: 0, panY: 0 },
   ctrlSpacing: false,
   treeWidth: 306,
+  propertyWidth: 330,
+  treeCollapsed: false,
+  propertyCollapsed: false,
+  catalogOpen: false,
   accessibilityFilter: 'issues',
   editingProperty: null,
   mutationBusy: false,
@@ -80,10 +84,12 @@ function bind() {
   elements['device-select'].addEventListener('change', () => {
     clearMutationState();
     loadProcesses();
+    toggleCatalog(false);
     loadFilterOptions();
   });
   elements['scope-select'].addEventListener('change', () => {
     clearMutationState();
+    toggleCatalog(false);
     loadFilterOptions();
     renderToolbar();
   });
@@ -157,6 +163,19 @@ function bind() {
   bindSceneControls();
   bindTwoDPanZoom();
   bindTreeResize();
+  bindPropertyResize();
+  bindStageResize();
+  elements["scope-filter-toggle"].addEventListener("click", () => toggleCatalog());
+  elements["tree-toggle"].addEventListener("click", () => togglePanel("tree"));
+  elements["property-toggle"].addEventListener("click", () => togglePanel("property"));
+  elements["reset-stage-button"].addEventListener("click", resetStageView);
+  elements["tree-edge-toggle"].addEventListener("click", () => togglePanel("tree"));
+  elements["property-edge-toggle"].addEventListener("click", () => togglePanel("property"));
+  document.addEventListener("pointerdown", event => {
+    if (state.catalogOpen && elements["catalog-panel"] && !elements["catalog-panel"].contains(event.target) && !elements["scope-filter-toggle"].contains(event.target)) {
+      toggleCatalog(false);
+    }
+  }, true);
 }
 
 function bindTreeResize() {
@@ -186,6 +205,106 @@ function bindTreeResize() {
   handle.addEventListener('pointercancel', clear);
   handle.addEventListener('lostpointercapture', clear);
 }
+
+function bindPropertyResize() {
+  const handle = document.getElementById("property-resize-handle");
+  const workspace = document.querySelector(".workspace");
+  let drag = null;
+  handle.addEventListener("pointerdown", event => {
+    drag = { x: event.clientX, pointerId: event.pointerId };
+    handle.classList.add("active");
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  handle.addEventListener("pointermove", event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const delta = event.clientX - drag.x;
+    drag.x = event.clientX;
+    const current = state.propertyWidth || 330;
+    const next = Math.max(240, Math.min(560, current - delta));
+    state.propertyWidth = next;
+    workspace.style.setProperty("--property-width", next + "px");
+  });
+  const clearHandle = () => { drag = null; handle.classList.remove("active"); };
+  handle.addEventListener("pointerup", clearHandle);
+  handle.addEventListener("pointercancel", clearHandle);
+  handle.addEventListener("lostpointercapture", clearHandle);
+}
+
+function togglePanel(kind) {
+  const workspace = document.querySelector(".workspace");
+  if (kind === "tree") {
+    state.treeCollapsed = !state.treeCollapsed;
+    workspace.classList.toggle("tree-collapsed", state.treeCollapsed);
+    elements["tree-toggle"].textContent = state.treeCollapsed ? "›" : "‹";
+  } else {
+    state.propertyCollapsed = !state.propertyCollapsed;
+    workspace.classList.toggle("property-collapsed", state.propertyCollapsed);
+    elements["property-toggle"].textContent = state.propertyCollapsed ? "‹" : "›";
+  }
+}
+
+function toggleCatalog(openOverride) {
+  const open = openOverride === undefined ? !state.catalogOpen : openOverride;
+  state.catalogOpen = open;
+  elements["catalog-panel"].hidden = !open;
+  if (open) renderFilterList();
+  elements["scope-filter-toggle"].setAttribute("aria-expanded", String(open));
+  elements["scope-filter-toggle"].classList.toggle("open", open);
+  updateScopeToggleLabel();
+}
+
+function updateScopeToggleLabel() {
+  if (!elements["scope-filter-toggle"]) return;
+  const label = filterLabelForScope(elements["scope-select"].value);
+  const all = elements["filter-all"].checked;
+  const selectedCount = [...elements["filter-select"].selectedOptions].filter(o => !o.hidden).length;
+  elements["scope-filter-toggle"].textContent = all ? label + " · 全部" : label + " · " + selectedCount + "项";
+}
+function renderFilterList() {
+  const list = elements["filter-list"];
+  const select = elements["filter-select"];
+  if (!list || !select) return;
+  list.replaceChildren();
+  const all = elements["filter-all"].checked;
+  for (const opt of select.options) {
+    if (opt.hidden) continue;
+    const row = el("button", "filter-item");
+    row.type = "button";
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(all || opt.selected));
+    row.textContent = opt.textContent || opt.text || "";
+    row.addEventListener("click", () => {
+      opt.selected = !opt.selected;
+      const options = [...select.options].filter(o => !o.hidden);
+      const selectedCount = options.filter(o => o.selected).length;
+      elements["filter-all"].checked = options.length > 0 && selectedCount === options.length;
+      renderFilterList();
+      updateScopeToggleLabel();
+    });
+    list.append(row);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement("p");
+    empty.className = "filter-empty";
+    empty.textContent = "无匹配项";
+    list.append(empty);
+  }
+}
+
+function resetStageView() {
+  if (state.stage === "2d") {
+    state.twoD = { zoom: 1, panX: 0, panY: 0 };
+    applyTwoDTransform();
+  } else {
+    state.rotationX = 58;
+    state.rotationZ = -27;
+    state.scale = .9;
+    state.pan3d = { x: 0, y: 0 };
+    updateSceneTransform();
+  }
+}
+
 
 function bindTwoDPanZoom() {
   const stage = elements['two-d-stage'];
@@ -267,7 +386,11 @@ async function initialize() {
 async function loadProcesses() {
   const serial = elements['device-select'].value;
   elements['process-select'].replaceChildren(option('', '选择进程'));
-  if (!serial) return;
+  if (!serial) {
+    elements["scope-filter-toggle"].hidden = true;
+    toggleCatalog(false);
+    return;
+  }
   try {
     const processes = await api('api/processes?serial=' + encodeURIComponent(serial));
     if (processes.error) throw new Error(processes.error);
@@ -278,6 +401,9 @@ async function loadProcesses() {
       item.dataset.process = process.processName;
       elements['process-select'].append(item);
     }
+    const preferred = processes.find(p => p.packageName && state.projectPackages.some(pkg => p.packageName === pkg))
+      || processes[0];
+    if (preferred) elements['process-select'].value = String(preferred.pid);
   } catch (error) {
     fail(error);
   }
@@ -290,7 +416,7 @@ async function loadFilterOptions() {
   elements['filter-label'].textContent = filterLabelForScope(scope);
   select.replaceChildren();
   if (!serial) return;
-  elements['filter-all'].checked = true;
+  elements['filter-all'].checked = false;
   try {
     const items = await api('api/catalog?serial=' + encodeURIComponent(serial) + '&scope=' + encodeURIComponent(scope));
     if (items.error) throw new Error(items.error);
@@ -304,10 +430,33 @@ async function loadFilterOptions() {
       opt.title = label;
       select.append(opt);
     }
+    preselectDefaultFilter();
     renderFilterOptions();
+    elements["scope-filter-toggle"].hidden = state.catalogItems.length === 0;
+    updateScopeToggleLabel();
   } catch (error) {
     fail(error);
   }
+}
+
+function preselectDefaultFilter() {
+  const select = elements['filter-select'];
+  const all = elements['filter-all'];
+  all.checked = false;
+  if (!select.options.length) return;
+  const scope = elements['scope-select'].value;
+  const targetPackage = state.projectPackages?.[0];
+  const options = [...select.options];
+  let picked = null;
+  if (scope === 'process') {
+    picked = options.find(o => o.dataset.package && targetPackage && (o.dataset.package === targetPackage || o.dataset.process === targetPackage || (o.textContent || '').includes(targetPackage)))
+      || options.find(o => o.dataset.pid)
+      || options[0];
+  } else {
+    picked = options.find(o => o.dataset.package && targetPackage && (o.dataset.package === targetPackage || o.dataset.process === targetPackage || (o.textContent || '').includes(targetPackage)))
+      || options[0];
+  }
+  for (const opt of options) opt.selected = opt === picked;
 }
 
 function filterLabelForScope(scope) {
@@ -328,6 +477,8 @@ function renderFilterOptions() {
     opt.hidden = !visible;
     opt.selected = all || selected.has(opt.value);
   }
+  renderFilterList();
+  updateScopeToggleLabel();
 }
 
 function handleFilterSelection() {
@@ -542,7 +693,7 @@ function renderToolbar() {
   document.querySelectorAll('[data-stage]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.stage === state.stage)));
   document.querySelectorAll('[data-three-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.threeMode === state.threeMode)));
   elements['three-mode'].hidden = state.stage !== '3d';
-  elements['catalog-panel'].hidden = false;
+  elements['catalog-panel'].hidden = !state.catalogOpen;
 }
 
 function renderTree() {
@@ -725,10 +876,38 @@ function appendSpacingAnnotations(container, node, snapshot, bounds, space, plan
   }
 }
 
+function fitTwoDCanvas(planeWidth, planeHeight, ratio) {
+  const rawW = Math.max(1, Math.round(planeWidth * ratio));
+  const rawH = Math.max(1, Math.round(planeHeight * ratio));
+  const stage = elements['two-d-stage'];
+  const availW = Math.max(1, stage.clientWidth - 56);
+  const availH = Math.max(1, stage.clientHeight - 56);
+  const fit = Math.min(1, availW / rawW, availH / rawH);
+  const width = Math.max(160, Math.round(rawW * fit));
+  const height = Math.max(160, Math.round(rawH * fit));
+  return { width, height, fit };
+}
+
+function bindStageResize() {
+  const stage = elements['two-d-stage'];
+  if (!stage || typeof ResizeObserver === 'undefined') return;
+  let timer = null;
+  const handler = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { if (state.snapshot && state.stage === '2d') render2d(); }, 80);
+  };
+  const observer = new ResizeObserver(handler);
+  observer.observe(stage);
+  state.stageResizeObserver = observer;
+}
+
 function render2d() {
   const { bounds, space, ratio, planeWidth, planeHeight, hasScreenshotMetrics } = screenPlane(state.snapshot, state.displayId);
-  const width = Math.max(160, Math.round(planeWidth * ratio));
-  const height = Math.max(160, Math.round(planeHeight * ratio));
+  const fitSize = fitTwoDCanvas(planeWidth, planeHeight, ratio);
+  const width = fitSize.width;
+  const height = fitSize.height;
+  const fitW = width;
+  const fitH = height;
   elements['screen-frame'].style.width = `${width}px`;
   elements['screen-frame'].style.height = `${height}px`;
   const screenshot = state.snapshot.screenshot;
@@ -762,22 +941,22 @@ function render2d() {
           width: (node.bounds.right - node.bounds.left) / (bounds.right - bounds.left),
           height: (node.bounds.bottom - node.bounds.top) / (bounds.bottom - bounds.top)
         };
-    box.style.left = `${position.left * planeWidth * ratio}px`;
-    box.style.top = `${position.top * planeHeight * ratio}px`;
-    box.style.width = `${Math.max(2, position.width * planeWidth * ratio)}px`;
-    box.style.height = `${Math.max(2, position.height * planeHeight * ratio)}px`;
+    box.style.left = `${position.left * fitW}px`;
+    box.style.top = `${position.top * fitH}px`;
+    box.style.width = `${Math.max(2, position.width * fitW)}px`;
+    box.style.height = `${Math.max(2, position.height * fitH)}px`;
     const inspection = layoutInspection(node, state.snapshot);
     if (inspection.imageOverflow) box.classList.add("edge-image-overflow");
     if (inspection.parentOverflow) box.classList.add("edge-parent-overflow");
     if (isSelected) {
       const selPt = {
-        left: position.left * planeWidth * ratio,
-        top: position.top * planeHeight * ratio,
-        right: (position.left + position.width) * planeWidth * ratio,
-        bottom: (position.top + position.height) * planeHeight * ratio
+        left: position.left * fitW,
+        top: position.top * fitH,
+        right: (position.left + position.width) * fitW,
+        bottom: (position.top + position.height) * fitH
       };
       appendSizeTag(fragment, node, selPt);
-      if (state.ctrlSpacing) appendSpacingAnnotations(fragment, node, state.snapshot, bounds, space, planeWidth, planeHeight, ratio, hasScreenshotMetrics);
+      if (state.ctrlSpacing) appendSpacingAnnotations(fragment, node, state.snapshot, bounds, space, fitW, fitH, 1, hasScreenshotMetrics);
     }
     fragment.append(box);
   }
@@ -1355,6 +1534,7 @@ async function fillDevices(devices) {
   if (first) {
     elements['device-select'].value = first.serial;
     await loadProcesses();
+    await loadFilterOptions();
   }
 }
 

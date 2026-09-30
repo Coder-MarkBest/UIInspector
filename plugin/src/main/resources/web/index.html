@@ -8,40 +8,51 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="product-mark">
-      <span class="mark-glyph" aria-hidden="true">UI</span>
-      <div>
+    <div class="brand-row">
+      <div class="product-mark">
+        <span class="mark-glyph" aria-hidden="true">UI</span>
         <h1>Android UI Inspector</h1>
         <p id="connection-status"><span class="status-dot"></span>等待设备</p>
       </div>
     </div>
-    <label class="field compact">
-      <span>设备</span>
-      <select id="device-select" aria-label="Android 设备"><option value="">选择设备</option></select>
-    </label>
-    <label class="field compact">
-      <span>范围</span>
-      <select id="scope-select" aria-label="采集范围">
-        <option value="process" selected>按进程</option><option value="window">按 Window</option><option value="activity">按 Activity/Fragment</option>
-      </select>
-    </label>
-    <select id="process-select" hidden><option value="">选择进程</option></select>
-    <button id="capture-button" class="primary-button">采集</button>
-    <button id="jvmti-diag-button" type="button" class="ghost-button">检测 JVMTI</button>
+    <div class="topbar-actions">
+      <label class="field compact">
+        <span>设备</span>
+        <select id="device-select" aria-label="Android 设备"><option value="">选择设备</option></select>
+      </label>
+      <label class="field compact">
+        <span>范围</span>
+        <select id="scope-select" aria-label="采集范围">
+          <option value="process" selected>按进程</option><option value="window">按 Window</option><option value="activity">按 Activity/Fragment</option>
+        </select>
+      </label>
+      <button id="scope-filter-toggle" type="button" class="ghost-button scope-toggle" hidden>选择内容…</button>
+      <select id="process-select" hidden><option value="">选择进程</option></select>
+      <button id="capture-button" class="primary-button">采集</button>
+      <button id="jvmti-diag-button" type="button" class="ghost-button">检测 JVMTI</button>
+    </div>
   </header>
-  <section id="catalog-panel" class="catalog-panel" hidden>
-    <span id="filter-label" class="catalog-label">进程</span>
+  <section id="catalog-panel" class="catalog-panel popup-panel" hidden>
+    <div class="popup-title">
+      <span id="filter-label" class="catalog-label">进程</span>
+      <label class="all-check"><input id="filter-all" type="checkbox" checked>全部</label>
+    </div>
     <input id="filter-search" type="search" placeholder="搜索/模糊匹配" autocomplete="off">
-    <select id="filter-select" multiple aria-label="分类筛选"></select>
-    <label class="all-check"><input id="filter-all" type="checkbox" checked>全部</label>
+    <div id="filter-list" class="filter-list" role="listbox" aria-label="分类筛选列表"></div>
+    <select id="filter-select" multiple hidden aria-label="分类筛选（数据源）"></select>
   </section>
 
   <div id="jvmti-diag-panel" class="jvmti-diag-panel" hidden></div>
   <main class="workspace">
+    <button id="tree-edge-toggle" type="button" class="edge-toggle tree-edge" aria-label="展开左侧树" title="展开左侧树">›</button>
+    <button id="property-edge-toggle" type="button" class="edge-toggle property-edge" aria-label="展开右侧属性" title="展开右侧属性">‹</button>
     <aside class="tree-panel panel">
       <div class="panel-heading">
-        <div><span class="kicker">STRUCTURE</span><h2>Window / View 树</h2></div>
-        <span id="tree-count" class="count-chip">0</span>
+        <div><span class="kicker">结构</span><h2>Window / View 树</h2></div>
+        <span class="heading-right">
+          <span id="tree-count" class="count-chip">0</span>
+          <button id="tree-toggle" type="button" class="collapse-button" aria-label="收起/展开左侧树" title="收起/展开">‹</button>
+        </span>
       </div>
       <label class="search-field">
         <span class="sr-only">搜索 View</span>
@@ -73,6 +84,7 @@
           <input id="rules-toggle" type="checkbox">
           <span>异常检查</span>
         </label>
+        <button id="reset-stage-button" type="button" class="ghost-button stage-reset" title="重置视图比例与位置">重置视图</button>
       </div>
 
       <div id="stage" class="stage" tabindex="0" aria-label="UI 层级画布">
@@ -100,8 +112,11 @@
 
     <aside id="property-panel" class="property-panel panel">
       <div class="panel-heading">
-        <div><span class="kicker">DETAIL</span><h2 id="selected-title">属性</h2></div>
-        <span id="selected-source" class="source-chip">未选择</span>
+        <div><span class="kicker">详情</span><h2 id="selected-title">属性</h2></div>
+        <span class="heading-right">
+          <span id="selected-source" class="source-chip">未选择</span>
+          <button id="property-toggle" type="button" class="collapse-button" aria-label="收起/展开右侧属性" title="收起/展开">›</button>
+        </span>
       </div>
       <section id="findings" class="findings" hidden>
         <div class="subheading"><h3>异常候选</h3><span id="finding-count" class="warning-chip">0</span></div>
@@ -126,6 +141,7 @@
         <div class="subheading"><h3>采集诊断</h3></div>
         <div id="diagnostic-list" class="diagnostic-list"><p>暂无数据</p></div>
       </section>
+      <div id="property-resize-handle" class="resize-handle property-resize-handle" aria-hidden="true"></div>
     </aside>
   </main>
 

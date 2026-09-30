@@ -80,6 +80,7 @@ class InspectorServerTest {
         @Override public String session() { return "{\"status\":\"ready\"}"; }
         @Override public String devices() { return "[]"; }
         @Override public String processes(Map<String, String> query) { return "[]"; }
+        @Override public String catalog(Map<String, String> query) { return "[]"; }
         @Override public String capture(String body, Map<String, String> query) {
             captureCalls++;
             return "{\"status\":\"captured\"}";

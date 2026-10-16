@@ -16,6 +16,8 @@ import com.company.uiinspector.protocol.PropertyEditor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -23,11 +25,14 @@ import java.util.List;
 final class PropertyEditors {
     private PropertyEditors() {}
 
+    private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Description>> SETTER_CACHE =
+            new ConcurrentHashMap<>();
+
     record Description(PropertyEditor editor, String readOnlyReason) {}
 
     static Description forView(View view, String propertyName) {
         Description adapted = viewAdapter(view, propertyName);
-        return adapted != null ? adapted : discoverSetter(view.getClass(), propertyName);
+        return adapted != null ? adapted : discoverSetterCached(view.getClass(), propertyName);
     }
 
     static Description forWindow(
@@ -97,6 +102,11 @@ final class PropertyEditors {
         if (candidates.size() > 1) adapter += ":" + parameter.getName();
         List<String> choices = parameter.isEnum() ? enumNames(parameter.asSubclass(Enum.class)) : List.of();
         return editor(VIEW, valueType, adapter, choices);
+    }
+
+    private static Description discoverSetterCached(Class<?> viewClass, String propertyName) {
+        return SETTER_CACHE.computeIfAbsent(viewClass, key -> new ConcurrentHashMap<>())
+                .computeIfAbsent(propertyName, key -> discoverSetter(viewClass, key));
     }
 
     private static Method selectSetter(List<Method> candidates, Class<?> getterType, String propertyName) {

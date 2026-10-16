@@ -268,18 +268,14 @@ public final class InspectorApi implements InspectorServer.Api {
                 }
             }
 
-            // 并行采集 semantic、screenshot、enhanced（互不依赖）
+            // 先并行抓语义 + 截图，再按需跑 JVMTI：避免三路同时抢占 adb / SurfaceFlinger
+            // / 目标 App 主线程，防止逐帧动画在抓取期间丢帧或局部区域显示不出来。
             Future<InspectionSnapshot> semanticFuture = captureExecutor.submit(
                     () -> semantic.capture(request.serial, scope, packageName));
             Future<Screenshot> screenshotFuture = captureExecutor.submit(
                     () -> screenshots.capture(request.serial));
-            Future<InspectionSnapshot> enhancedFuture = null;
             final RunningProcess enhancedTarget = target;
             final String enhancedAbi = abi;
-            if (debuggableTarget && enhancedAbi != null && !enhancedAbi.isBlank()) {
-                enhancedFuture = captureExecutor.submit(
-                        () -> agents.capture(request.serial, enhancedTarget, enhancedAbi));
-            }
 
             InspectionSnapshot semanticSnapshot;
             Screenshot screenshot;
@@ -291,13 +287,16 @@ public final class InspectorApi implements InspectorServer.Api {
                 if (e.getCause() instanceof InterruptedException ie) throw ie;
                 throw new IOException("Parallel capture failed.", e.getCause());
             }
+
             InspectionSnapshot enhanced = null;
             Diagnostic degradation = runEnhanced && target != null && !debuggableTarget
                     ? new Diagnostic("WARN", "enhanced_unavailable",
                             "Target process is not debuggable; showing public semantic nodes.")
                     : null;
-            if (enhancedFuture != null) {
+            if (debuggableTarget && enhancedAbi != null && !enhancedAbi.isBlank()) {
                 try {
+                    Future<InspectionSnapshot> enhancedFuture = captureExecutor.submit(
+                            () -> agents.capture(request.serial, enhancedTarget, enhancedAbi));
                     enhanced = enhancedFuture.get(75, TimeUnit.SECONDS);
                 } catch (ExecutionException e) {
                     Throwable cause = e.getCause();
@@ -321,6 +320,25 @@ public final class InspectorApi implements InspectorServer.Api {
             InspectionSnapshot merged = SnapshotMerger.merge(
                     semanticSnapshot, enhanced, screenshot, processInfo,
                     Stream.of(degradation, installWarning).filter(Objects::nonNull).toList());
+            // ??/??????????JVMTI ????????????????????????
+            // ? Agent/MCP ????????????????????
+            boolean targetScope = scope == CaptureScope.TARGET_PROCESS || scope == CaptureScope.PROCESS_WINDOWS;
+            if (targetScope && isEmptySnapshot(merged)) {
+                try {
+                    InspectionSnapshot global = semantic.capture(request.serial, CaptureScope.GLOBAL, null);
+                    if (!isEmptySnapshot(global)) {
+                        merged = SnapshotMerger.merge(
+                                global, enhanced, screenshot, processInfo,
+                                Stream.of(degradation, new Diagnostic("WARN", "global_fallback",
+                                        "Process enhanced/semantic capture was empty; using global accessibility snapshot."))
+                                        .filter(Objects::nonNull).toList());
+                    } else {
+                        merged = global;
+                    }
+                } catch (Exception ignored) {
+                    // global fallback is best-effort; keep the (possibly empty) original result
+                }
+            }
             InspectionSnapshot filtered = filterSnapshot(merged, request.windowIds, request.activities);
             current.set(filtered);
             status.set("ready");
@@ -329,6 +347,11 @@ public final class InspectorApi implements InspectorServer.Api {
             status.set("error");
             return error(error);
         }
+    }
+
+    private static boolean isEmptySnapshot(InspectionSnapshot snapshot) {
+        return snapshot == null || (snapshot.windows() == null || snapshot.windows().isEmpty())
+                && (snapshot.nodes() == null || snapshot.nodes().isEmpty());
     }
 
     private static InspectionSnapshot filterSnapshot(InspectionSnapshot snapshot,

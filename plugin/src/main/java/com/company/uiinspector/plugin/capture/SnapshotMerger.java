@@ -16,7 +16,11 @@ public final class SnapshotMerger {
             Screenshot screenshot,
             List<ProcessInfo> processes,
             List<Diagnostic> degradation) {
-        InspectionSnapshot tree = enhanced == null ? semantic : enhanced;
+        // JVMTI ??????????????0 ??? 0 ????????????????
+        // ?????????????????????
+        boolean enhancedHasData = enhanced != null
+                && (!enhanced.windows().isEmpty() || !enhanced.nodes().isEmpty());
+        InspectionSnapshot tree = enhancedHasData ? enhanced : semantic;
         List<Diagnostic> diagnostics = new ArrayList<>(semantic.diagnostics());
         if (enhanced != null) diagnostics.addAll(enhanced.diagnostics());
         if (degradation != null) diagnostics.addAll(degradation);

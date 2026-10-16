@@ -39,8 +39,8 @@ public final class ViewCaptureBridge {
     private static final List<String> GROUPS = List.of(
             "identity", "windowHierarchy", "geometryLayout", "renderingTransform",
             "content", "interactionState", "accessibility", "captureDiagnostics");
-    private static final int MAX_NODES = 20_000;
-    private static final int MAX_DEPTH = 300;
+    private static final int MAX_NODES = 12_000;
+    private static final int MAX_DEPTH = 250;
 
     private ViewCaptureBridge() {}
 
@@ -90,7 +90,8 @@ public final class ViewCaptureBridge {
             WindowManager.LayoutParams params = index < windowParams.size() ? windowParams.get(index) : null;
             String windowId = "v:w:" + index;
             String rootId = "v:n:" + index + ":0";
-            collectView(root, windowId, rootId, null, 0, 0, nodes, diagnostics, counter);
+            collectView(root, windowId, rootId, null, 0, 0, root.isShown(),
+                    nodes, diagnostics, counter);
             windows.add(new WindowSnapshot(
                     windowId,
                     CaptureSource.JVMTI,
@@ -124,6 +125,7 @@ public final class ViewCaptureBridge {
             String parentId,
             int depth,
             int drawingOrder,
+            boolean shown,
             Map<String, UiNode> output,
             List<Diagnostic> diagnostics,
             Counter counter) {
@@ -131,21 +133,23 @@ public final class ViewCaptureBridge {
             counter.truncated = true;
             return;
         }
+        boolean viewShown = shown && view.getVisibility() == View.VISIBLE;
         List<String> childIds = new ArrayList<>();
-        if (view instanceof ViewGroup group) {
+        if (view.getVisibility() != View.GONE && view instanceof ViewGroup group) {
             for (int index = 0; index < group.getChildCount(); index++) {
                 String childId = id + "." + index;
                 childIds.add(childId);
                 try {
-                    collectView(group.getChildAt(index), windowId, childId, id, depth + 1, index,
-                            output, diagnostics, counter);
+                    collectView(group.getChildAt(index), windowId, childId, id, depth + 1,
+                            index, viewShown, output, diagnostics, counter);
                 } catch (RuntimeException error) {
                     diagnostics.add(new Diagnostic(
                             "WARN", "view_property_read", view.getClass().getName() + ": " + error.getClass().getSimpleName()));
                 }
             }
         }
-        Map<String, String> values = viewProperties(view, windowId, id, parentId, childIds.size(), depth, drawingOrder);
+        Map<String, String> values = viewProperties(
+                view, windowId, id, parentId, childIds.size(), depth, drawingOrder, viewShown);
         output.put(id, new UiNode(
                 id, CaptureSource.JVMTI, windowId, parentId, childIds, depth,
                 view.getClass().getName(), resourceId(view), text(view), description(view),
@@ -154,7 +158,8 @@ public final class ViewCaptureBridge {
     }
 
     private static Map<String, String> viewProperties(
-            View view, String windowId, String nodeId, String parentId, int childCount, int depth, int drawingOrder) {
+            View view, String windowId, String nodeId, String parentId, int childCount, int depth,
+            int drawingOrder, boolean shown) {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("class", view.getClass().getName());
         put(values, "resourceId", resourceId(view));
@@ -183,7 +188,7 @@ public final class ViewCaptureBridge {
         addLayoutParams(values, view.getLayoutParams());
 
         values.put("visibility", visibility(view.getVisibility()));
-        values.put("shown", Boolean.toString(view.isShown()));
+        values.put("shown", Boolean.toString(shown));
         values.put("alpha", floatValue(view.getAlpha()));
         values.put("elevation", floatValue(view.getElevation()));
         values.put("z", floatValue(view.getZ()));
@@ -283,7 +288,8 @@ public final class ViewCaptureBridge {
 
     static String currentViewProperty(View view, String propertyName) {
         int childCount = view instanceof ViewGroup group ? group.getChildCount() : 0;
-        return viewProperties(view, "", "", null, childCount, 0, 0).get(propertyName);
+        return viewProperties(view, "", "", null, childCount, 0, 0, view.isShown())
+                .get(propertyName);
     }
 
     static String currentWindowProperty(

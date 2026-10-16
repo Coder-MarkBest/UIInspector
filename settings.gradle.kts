@@ -1,4 +1,4 @@
-pluginManagement {
+﻿pluginManagement {
     repositories {
         google()
         mavenCentral()
@@ -21,3 +21,6 @@ include(":plugin")
 include(":agent-helper")
 include(":agent-native")
 include(":sample-target")
+
+
+include(":mcp")
